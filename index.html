@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>OpenADAS</title>
+
+  <style>
+    :root{
+      --gap: 14px;
+      --r: 16px;
+      --pad: 16px;
+
+      --h: 22px;
+      --sub: 16px;
+      --t: 19px;
+      --d: 15px;
+
+      --bg: #f7f7f8;
+      --text: #111214;
+      --muted: rgba(17,18,20,.75);
+      --border: rgba(20,20,20,.14);
+      --shadow: 0 10px 22px rgba(0,0,0,.08);
+
+      --a1: #2563eb;
+      --a2: #16a34a;
+      --a3: #f59e0b;
+      --chip: rgba(0,0,0,.06);
+    }
+
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0c0f14;
+        --text: #f2f5f7;
+        --muted: rgba(242,245,247,.78);
+        --border: rgba(255,255,255,.14);
+        --shadow: 0 10px 22px rgba(0,0,0,.45);
+        --chip: rgba(255,255,255,.08);
+      }
+    }
+
+    @media (min-width: 720px){
+      :root{ --h: 28px; --t: 20px; --d: 16px; }
+    }
+
+    *{ box-sizing: border-box; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      line-height: 1.4;
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 18px;
+      padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    }
+
+    header{
+      display:flex;
+      gap: var(--gap);
+      align-items:flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    h1{
+      margin:0;
+      font-size: var(--h);
+      letter-spacing: .2px;
+    }
+
+    .lang{
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.6);
+      color: inherit;
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor:pointer;
+      box-shadow: 0 6px 14px rgba(0,0,0,.08);
+    }
+    @media (prefers-color-scheme: dark){
+      .lang{ background: rgba(0,0,0,.25); }
+    }
+
+    .intro{
+      margin-top: 10px;
+      padding: 14px 16px;
+      border-radius: var(--r);
+      background: rgba(255,255,255,.8);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      font-size: var(--sub);
+      color: var(--muted);
+    }
+    @media (prefers-color-scheme: dark){
+      .intro{ background: rgba(255,255,255,.04); }
+    }
+
+    .intro strong{ color: var(--text); }
+
+    .grid{
+      display:grid;
+      gap: var(--gap);
+      grid-template-columns: 1fr;
+      margin-top: 16px;
+    }
+    @media (min-width: 720px){
+      .grid{ grid-template-columns: 1fr 1fr; }
+    }
+
+    .card{
+      display:block;
+      text-decoration:none;
+      color: inherit;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: var(--pad);
+      background: rgba(255,255,255,.85);
+      box-shadow: var(--shadow);
+    }
+    @media (prefers-color-scheme: dark){
+      .card{ background: rgba(255,255,255,.04); }
+    }
+
+    .row{
+      display:flex;
+      gap: 14px;
+      align-items:flex-start;
+    }
+
+    .accent{
+      width: 6px;
+      border-radius: 999px;
+      margin-top: 4px;
+      height: 46px;
+    }
+    .m1 .accent{ background: var(--a1); }
+    .m2 .accent{ background: var(--a2); }
+    .m3 .accent{ background: var(--a3); }
+
+    .icon{
+      font-size: 30px;
+      width: 40px;
+      text-align:center;
+      margin-top: 2px;
+    }
+
+    .title{
+      margin:0;
+      font-size: var(--t);
+      font-weight: 750;
+    }
+
+    .desc{
+      margin: 8px 0 0;
+      font-size: var(--d);
+      color: var(--muted);
+    }
+
+    footer{
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display:flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .links a{
+      color: inherit;
+      font-weight: 650;
+    }
+
+    .safe{
+      font-weight: 700;
+      color: var(--text);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <h1>OpenADAS</h1>
+      <button class="lang" id="langBtn">VI / EN</button>
+    </header>
+
+    <!-- Intro -->
+    <section class="intro" id="t_intro">
+      <strong>OpenADAS</strong> là một hệ thống hỗ trợ lái xe (ADAS) mã nguồn mở, chạy trực tiếp trên trình duyệt điện thoại.
+      <br><br>
+      Chọn một chế độ bên dưới, cấp quyền camera (hoặc dùng video mẫu), đặt điện thoại cố định và bắt đầu lái xe.
+    </section>
+
+    <!-- Mode picker -->
+    <main class="grid">
+      <a class="card m1" href="./mode/traffic-sign/index.html">
+        <div class="row">
+          <div class="accent"></div>
+          <div class="icon">🛑</div>
+          <div>
+            <p class="title" id="t_m1">Nhận diện biển báo</p>
+            <p class="desc" id="t_d1">Phát hiện và nhận diện biển báo giao thông theo thời gian thực.</p>
+          </div>
+        </div>
+      </a>
+
+      <a class="card m2" href="./mode/lane-departure/index.html">
+        <div class="row">
+          <div class="accent"></div>
+          <div class="icon">🛣️</div>
+          <div>
+            <p class="title" id="t_m2">Cảnh báo lệch làn</p>
+            <p class="desc" id="t_d2">Cảnh báo khi xe có xu hướng rời khỏi làn đường.</p>
+          </div>
+        </div>
+      </a>
+
+      <a class="card m3" href="./mode/traffic-sign-lane-departure/index.html">
+        <div class="row">
+          <div class="accent"></div>
+          <div class="icon">🛑➕🛣️</div>
+          <div>
+            <p class="title" id="t_m3">Biển báo + Lệch làn</p>
+            <p class="desc" id="t_d3">Kết hợp cả nhận diện biển báo và cảnh báo lệch làn.</p>
+          </div>
+        </div>
+      </a>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <div class="links">
+        <a href="https://github.com/drivesafer/openADAS/">GitHub</a> ·
+        <a href="https://github.com/drivesafer/openADAS/issues" id="t_issue">Báo lỗi / Góp ý</a>
+      </div>
+      <div class="safe" id="t_safe">🚗 Chúc bạn lái xe an toàn!</div>
+    </footer>
+  </div>
+
+  <script>
+    (function(){
+      var dict = {
+        vi:{
+          intro:"<strong>OpenADAS</strong> là một hệ thống hỗ trợ lái xe (ADAS) mã nguồn mở, chạy trực tiếp trên trình duyệt điện thoại.<br><br>Chọn một chế độ bên dưới, cấp quyền camera (hoặc dùng video mẫu), đặt điện thoại cố định và bắt đầu lái xe.",
+          m1:"Nhận diện biển báo",
+          d1:"Phát hiện và nhận diện biển báo giao thông theo thời gian thực.",
+          m2:"Cảnh báo lệch làn",
+          d2:"Cảnh báo khi xe có xu hướng rời khỏi làn đường.",
+          m3:"Biển báo + Lệch làn",
+          d3:"Kết hợp cả nhận diện biển báo và cảnh báo lệch làn.",
+          issue:"Báo lỗi / Góp ý",
+          safe:"🚗 Chúc bạn lái xe an toàn!"
+        },
+        en:{
+          intro:"<strong>OpenADAS</strong> is an open-source Advanced Driver Assistance System that runs directly in your phone’s browser.<br><br>Select a mode below, allow camera access (or use a sample video), mount your phone securely, and start driving.",
+          m1:"Traffic Sign Recognition",
+          d1:"Detect and recognize traffic signs in real time.",
+          m2:"Lane Departure Warning",
+          d2:"Warn when the vehicle drifts out of its lane.",
+          m3:"Signs + Lane Departure",
+          d3:"Combined traffic sign recognition and lane departure warning.",
+          issue:"Report / Feedback",
+          safe:"🚗 Drive safe!"
+        }
+      };
+
+      function setLang(l){
+        var t=dict[l];
+        document.documentElement.lang=l;
+        document.getElementById("t_intro").innerHTML=t.intro;
+        document.getElementById("t_m1").textContent=t.m1;
+        document.getElementById("t_d1").textContent=t.d1;
+        document.getElementById("t_m2").textContent=t.m2;
+        document.getElementById("t_d2").textContent=t.d2;
+        document.getElementById("t_m3").textContent=t.m3;
+        document.getElementById("t_d3").textContent=t.d3;
+        document.getElementById("t_issue").textContent=t.issue;
+        document.getElementById("t_safe").textContent=t.safe;
+        localStorage.setItem("openadas_lang",l);
+      }
+
+      var auto=(navigator.language||"").startsWith("vi")?"vi":"en";
+      var lang=localStorage.getItem("openadas_lang")||auto;
+      setLang(lang);
+      document.getElementById("langBtn").onclick=function(){
+        lang=lang==="vi"?"en":"vi"; setLang(lang);
+      };
+    })();
+  </script>
+</body>
+</html>
