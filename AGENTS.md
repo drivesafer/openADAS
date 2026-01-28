@@ -397,8 +397,9 @@ async function detectFrame() {
 
 // ❌ BAD: Don't do this
 function uploadFrame() {
-  const blob = canvas.toBlob(...);
-  fetch('/api/analyze', { method: 'POST', body: blob }); // NO!
+  canvas.toBlob(blob => {
+    fetch('/api/analyze', { method: 'POST', body: blob }); // NO!
+  });
 }
 ```
 
