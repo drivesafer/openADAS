@@ -1,337 +1,450 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Traffic Sign Recognizer</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-    
-    <style>
-        :root {
-            --bg-color: #121212;
-            --accent-color: #00e676;
-            --text-color: #ffffff;
-        }
-
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #container {
-            position: relative;
-            flex-grow: 1;
-            width: 100%;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        video, canvas {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        #ui-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            z-index: 10;
-            pointer-events: none;
-            display: flex;
-            justify-content: space-between;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
-        }
-
-        #stats {
-            background: rgba(0, 0, 0, 0.6);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 12px;
-            pointer-events: auto;
-        }
-
-        #controls {
-            position: absolute;
-            bottom: 120px;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            z-index: 20;
-        }
-
-        button {
-            background: var(--accent-color);
-            color: black;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 30px;
-            font-weight: bold;
-            text-transform: uppercase;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            cursor: pointer;
-        }
-
-        button:active { transform: scale(0.95); }
-
-        #thumbnail-gallery {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            height: 100px;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            overflow-x: auto;
-            padding: 10px;
-            gap: 10px;
-            box-sizing: border-box;
-            border-top: 1px solid #333;
-        }
-
-        .thumb-container {
-            flex: 0 0 auto;
-            height: 100%;
-            aspect-ratio: 1/1;
-            background: #222;
-            border-radius: 4px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .thumb-container img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .thumb-label {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            background: rgba(0,230,118,0.8);
-            color: black;
-            font-size: 8px;
-            text-align: center;
-            font-weight: bold;
-        }
-
-        #loader {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-color);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-
-        .hidden { display: none !important; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Traffic Sign ONNX Test</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0b0f14; color:#e8eef6; }
+    header { padding:12px 14px; display:flex; gap:10px; align-items:center; justify-content:space-between; }
+    .btn { appearance:none; border:1px solid #2b3542; background:#141b24; color:#e8eef6; padding:10px 12px; border-radius:12px; font-weight:600; }
+    .btn:active { transform: translateY(1px); }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    label { font-size:13px; opacity:.9; display:flex; gap:8px; align-items:center; }
+    input[type="range"]{ width:140px; }
+    main { padding:0 12px 14px; }
+    .stage { position:relative; width:100%; max-width:980px; margin:0 auto; border:1px solid #253041; border-radius:16px; overflow:hidden; background:#000; }
+    video, canvas { position:absolute; inset:0; width:100%; height:100%; }
+    .stage::before { content:""; display:block; padding-top:56.25%; } /* 16:9 default; will still fit */
+    .hud { position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12);
+           border-radius:12px; padding:8px 10px; font-size:13px; backdrop-filter: blur(6px); }
+    .muted { opacity:.8; }
+    a { color:#9ad1ff; text-decoration:none; }
+  </style>
 </head>
 <body>
-
-    <div id="loader">
-        <div style="font-size: 24px; margin-bottom: 20px;">🚦 Loading Model...</div>
-        <div id="load-status">Initializing...</div>
+  <header>
+    <div class="row">
+      <button id="btnStart" class="btn">Start camera</button>
+      <button id="btnStop" class="btn" disabled>Stop</button>
+      <button id="btnFlip" class="btn" disabled>Flip (front/back)</button>
     </div>
 
-    <div id="ui-overlay">
-        <div id="stats">
-            <div>Detections: <span id="count">0</span></div>
-            <div>Status: <span id="fps">Idle</span></div>
-        </div>
+    <div class="row">
+      <label>Conf
+        <input id="conf" type="range" min="0" max="1" step="0.01" value="0.35" />
+        <span id="confVal">0.35</span>
+      </label>
+      <label>NMS
+        <input id="nms" type="range" min="0" max="1" step="0.01" value="0.45" />
+        <span id="nmsVal">0.45</span>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="hud" id="hud">
+        <div><b>Status:</b> <span id="status">idle</span></div>
+        <div class="muted">FPS: <span id="fps">-</span> · Boxes: <span id="boxes">-</span></div>
+      </div>
     </div>
 
-    <div id="container">
-        <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
-    </div>
+    <p class="muted" style="max-width:980px;margin:10px auto 0;padding:0 2px;">
+      Tip: chạy bằng server tĩnh. Ví dụ: <code>python -m http.server</code> trong thư mục này, rồi mở <code>http://localhost:8000</code>.
+    </p>
+  </main>
 
-    <div id="controls">
-        <button id="start-btn">Start Camera</button>
-        <button id="clear-btn" class="hidden">Clear Gallery</button>
-    </div>
+  <!-- ONNX Runtime Web (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 
-    <div id="thumbnail-gallery"></div>
+  <script>
+    // ====== CONFIG ======
+    const MODEL_URL = "./trafic.onnx"; // <-- đổi nếu file bạn tên khác
+    const TARGET_FPS = 10;             // giới hạn vòng lặp
+    const MAX_DETECTIONS = 50;         // giới hạn box vẽ ra
+    const DEFAULT_INPUT_SIZE = 416;    // fallback nếu model shape dynamic/unknown
 
-    <script>
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('overlay');
-        const ctx = canvas.getContext('2d');
-        const startBtn = document.getElementById('start-btn');
-        const clearBtn = document.getElementById('clear-btn');
-        const gallery = document.getElementById('thumbnail-gallery');
-        const loader = document.getElementById('loader');
-        const countDisplay = document.getElementById('count');
-        const statusDisplay = document.getElementById('fps');
+    // ====== UI ======
+    const $ = (id) => document.getElementById(id);
+    const video = $("video");
+    const canvas = $("overlay");
+    const ctx = canvas.getContext("2d");
+    const statusEl = $("status");
+    const fpsEl = $("fps");
+    const boxesEl = $("boxes");
+    const btnStart = $("btnStart");
+    const btnStop = $("btnStop");
+    const btnFlip = $("btnFlip");
+    const confSlider = $("conf"), nmsSlider = $("nms");
+    const confVal = $("confVal"), nmsVal = $("nmsVal");
 
-        let model = null;
-        let isRunning = false;
-        let detectionCount = 0;
-        let lastDetections = [];
+    confSlider.addEventListener("input", () => confVal.textContent = (+confSlider.value).toFixed(2));
+    nmsSlider.addEventListener("input", () => nmsVal.textContent = (+nmsSlider.value).toFixed(2));
 
-        // Predefined classes we care about in COCO-SSD
-        const TARGET_CLASSES = ['stop sign', 'traffic light'];
+    // ====== STATE ======
+    let stream = null;
+    let session = null;
+    let inputName = null;
+    let inputW = DEFAULT_INPUT_SIZE, inputH = DEFAULT_INPUT_SIZE;
+    let facingMode = "environment"; // back cam by default
+    let running = false;
+    let lastFrameTs = 0;
+    let fpsSmoother = { lastTs: 0, fps: 0 };
 
-        async function init() {
-            try {
-                model = await cocoSsd.load();
-                loader.classList.add('hidden');
-            } catch (err) {
-                document.getElementById('load-status').innerText = "Error loading model. Check HTTPS connection.";
-                console.error(err);
-            }
+    // Offscreen canvas for preprocessing
+    const workCanvas = document.createElement("canvas");
+    const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
+
+    // ====== HELPERS ======
+    function setStatus(s) { statusEl.textContent = s; }
+
+    function resizeOverlay() {
+      const rect = video.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+    }
+
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    function iou(a, b) {
+      const x1 = Math.max(a.x1, b.x1), y1 = Math.max(a.y1, b.y1);
+      const x2 = Math.min(a.x2, b.x2), y2 = Math.min(a.y2, b.y2);
+      const w = Math.max(0, x2 - x1), h = Math.max(0, y2 - y1);
+      const inter = w * h;
+      const areaA = Math.max(0, a.x2 - a.x1) * Math.max(0, a.y2 - a.y1);
+      const areaB = Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
+      return inter / (areaA + areaB - inter + 1e-9);
+    }
+
+    function nms(boxes, iouThr) {
+      boxes.sort((p, q) => q.score - p.score);
+      const keep = [];
+      for (const b of boxes) {
+        let ok = true;
+        for (const k of keep) {
+          if (iou(b, k) > iouThr) { ok = false; break; }
+        }
+        if (ok) keep.push(b);
+        if (keep.length >= MAX_DETECTIONS) break;
+      }
+      return keep;
+    }
+
+    // Letterbox resize -> returns {dataFloat32, scale, padX, padY, dstW, dstH}
+    function letterboxToTensor(videoEl, dstW, dstH) {
+      workCanvas.width = dstW;
+      workCanvas.height = dstH;
+
+      const srcW = videoEl.videoWidth;
+      const srcH = videoEl.videoHeight;
+
+      const r = Math.min(dstW / srcW, dstH / srcH);
+      const newW = Math.round(srcW * r);
+      const newH = Math.round(srcH * r);
+      const padX = Math.floor((dstW - newW) / 2);
+      const padY = Math.floor((dstH - newH) / 2);
+
+      // fill black
+      workCtx.clearRect(0, 0, dstW, dstH);
+      workCtx.fillStyle = "black";
+      workCtx.fillRect(0, 0, dstW, dstH);
+
+      // draw resized frame
+      workCtx.drawImage(videoEl, 0, 0, srcW, srcH, padX, padY, newW, newH);
+
+      const img = workCtx.getImageData(0, 0, dstW, dstH).data;
+      // YOLOv8 expects NCHW float32 in [0,1]
+      const out = new Float32Array(1 * 3 * dstH * dstW);
+      const hw = dstH * dstW;
+      for (let i = 0; i < hw; i++) {
+        const r8 = img[i * 4 + 0];
+        const g8 = img[i * 4 + 1];
+        const b8 = img[i * 4 + 2];
+        out[i] = r8 / 255;
+        out[i + hw] = g8 / 255;
+        out[i + 2 * hw] = b8 / 255;
+      }
+      return { tensorData: out, scale: r, padX, padY, newW, newH, dstW, dstH };
+    }
+
+    // Parse YOLOv8-ish output: supports [1, C, N] or [1, N, C]
+    // We treat "score" as max(class_probs). If model has objectness separate, this still usually works as "max prob".
+    function parseYoloOutput(outputTensor, confThr, meta) {
+      const { scale, padX, padY, dstW, dstH } = meta;
+      const srcW = video.videoWidth;
+      const srcH = video.videoHeight;
+
+      const data = outputTensor.data;
+      const dims = outputTensor.dims;
+
+      // Expect 3 dims
+      if (!dims || dims.length < 3) return [];
+
+      const d1 = dims[dims.length - 2];
+      const d2 = dims[dims.length - 1];
+
+      let N, C, layout; // layout: "CN" means [C,N], "NC" means [N,C]
+      if (d1 <= d2) { // heuristic: N tends to be bigger than C
+        C = d1; N = d2; layout = "CN";
+      } else {
+        N = d1; C = d2; layout = "NC";
+      }
+
+      const numClasses = Math.max(0, C - 4);
+      const boxes = [];
+
+      for (let i = 0; i < N; i++) {
+        // read x,y,w,h
+        let x, y, w, h;
+        if (layout === "CN") {
+          x = data[0 * N + i];
+          y = data[1 * N + i];
+          w = data[2 * N + i];
+          h = data[3 * N + i];
+        } else {
+          const base = i * C;
+          x = data[base + 0];
+          y = data[base + 1];
+          w = data[base + 2];
+          h = data[base + 3];
         }
 
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: "environment",
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                });
-                video.srcObject = stream;
-                startBtn.classList.add('hidden');
-                clearBtn.classList.remove('hidden');
-                isRunning = true;
-                
-                video.onloadedmetadata = () => {
-                    resizeCanvas();
-                    requestAnimationFrame(detectFrame);
-                };
-            } catch (err) {
-                alert("Camera access denied or not available. Ensure you are using HTTPS.");
-            }
+        // score = max class prob (or whatever follows)
+        let score = 0;
+        if (numClasses > 0) {
+          if (layout === "CN") {
+            for (let c = 4; c < C; c++) score = Math.max(score, data[c * N + i]);
+          } else {
+            const base = i * C;
+            for (let c = 4; c < C; c++) score = Math.max(score, data[base + c]);
+          }
+        } else {
+          // if no class dimension, just accept all with a dummy score
+          score = 1;
         }
 
-        function resizeCanvas() {
-            canvas.width = video.clientWidth;
-            canvas.height = video.clientHeight;
+        if (score < confThr) continue;
+
+        // YOLOv8 outputs are in pixels relative to model input (dstW/dstH)
+        // Convert center xywh -> corners in letterboxed space
+        let x1 = x - w / 2, y1 = y - h / 2, x2 = x + w / 2, y2 = y + h / 2;
+
+        // Undo letterbox: from dst space -> original video space
+        x1 = (x1 - padX) / scale;
+        y1 = (y1 - padY) / scale;
+        x2 = (x2 - padX) / scale;
+        y2 = (y2 - padY) / scale;
+
+        // Clamp to source frame
+        x1 = clamp(x1, 0, srcW);
+        y1 = clamp(y1, 0, srcH);
+        x2 = clamp(x2, 0, srcW);
+        y2 = clamp(y2, 0, srcH);
+
+        // reject tiny / invalid
+        if ((x2 - x1) < 4 || (y2 - y1) < 4) continue;
+
+        boxes.push({ x1, y1, x2, y2, score });
+      }
+
+      return boxes;
+    }
+
+    function draw(boxes) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) return;
+
+      // Map video pixel coords -> displayed CSS pixel coords
+      const rect = video.getBoundingClientRect();
+      const scaleX = rect.width / vw;
+      const scaleY = rect.height / vh;
+
+      ctx.lineWidth = 2;
+      ctx.font = "13px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textBaseline = "top";
+
+      for (const b of boxes) {
+        const x = b.x1 * scaleX;
+        const y = b.y1 * scaleY;
+        const w = (b.x2 - b.x1) * scaleX;
+        const h = (b.y2 - b.y1) * scaleY;
+
+        // box
+        ctx.strokeStyle = "rgba(0,255,180,0.95)";
+        ctx.strokeRect(x, y, w, h);
+
+        // score tag
+        const label = (b.score * 100).toFixed(1) + "%";
+        const pad = 4;
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(x, y, tw + pad * 2, 18);
+        ctx.fillStyle = "rgba(0,255,180,0.95)";
+        ctx.fillText(label, x + pad, y + 2);
+      }
+    }
+
+    async function loadModel() {
+      // Make ORT load its WASM from the same CDN folder
+      ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+      ort.env.wasm.numThreads = Math.min(4, (navigator.hardwareConcurrency || 4));
+      ort.env.logLevel = "warning";
+
+      setStatus("loading model…");
+      session = await ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: ["wasm"] // start simple; later you can try webgl if desired
+      });
+
+      inputName = session.inputNames[0];
+
+      // Try infer input shape
+      const meta = session.inputMetadata[inputName];
+      const dims = meta && meta.dimensions ? meta.dimensions : null;
+      // Expected [1,3,H,W] (may include dynamic -1)
+      if (dims && dims.length >= 4) {
+        const H = dims[dims.length - 2];
+        const W = dims[dims.length - 1];
+        if (Number.isFinite(H) && H > 0) inputH = H;
+        if (Number.isFinite(W) && W > 0) inputW = W;
+      }
+
+      // Fallback
+      if (!inputW || inputW <= 0) inputW = DEFAULT_INPUT_SIZE;
+      if (!inputH || inputH <= 0) inputH = DEFAULT_INPUT_SIZE;
+
+      setStatus(`model ready (${inputW}x${inputH})`);
+    }
+
+    async function startCamera() {
+      if (stream) return;
+      setStatus("requesting camera…");
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      // Ensure overlay matches size
+      resizeOverlay();
+      window.addEventListener("resize", resizeOverlay);
+
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      btnFlip.disabled = false;
+
+      setStatus("camera on");
+    }
+
+    function stopCamera() {
+      running = false;
+      if (stream) {
+        for (const t of stream.getTracks()) t.stop();
+        stream = null;
+      }
+      video.srcObject = null;
+
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      btnFlip.disabled = true;
+
+      setStatus("stopped");
+      fpsEl.textContent = "-";
+      boxesEl.textContent = "-";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    async function loop(ts) {
+      if (!running) return;
+
+      // throttle
+      const minDt = 1000 / TARGET_FPS;
+      if (ts - lastFrameTs < minDt) {
+        requestAnimationFrame(loop);
+        return;
+      }
+      lastFrameTs = ts;
+
+      try {
+        if (!session) await loadModel();
+        if (!video.videoWidth) { requestAnimationFrame(loop); return; }
+
+        const confThr = +confSlider.value;
+        const nmsThr = +nmsSlider.value;
+
+        // preprocess
+        const meta = letterboxToTensor(video, inputW, inputH);
+        const input = new ort.Tensor("float32", meta.tensorData, [1, 3, inputH, inputW]);
+
+        // infer
+        const outputs = await session.run({ [inputName]: input });
+
+        // pick first output tensor
+        const outName = session.outputNames[0];
+        const outTensor = outputs[outName];
+
+        // parse + nms
+        let boxes = parseYoloOutput(outTensor, confThr, meta);
+        boxes = nms(boxes, nmsThr);
+
+        // draw
+        draw(boxes);
+
+        // HUD
+        boxesEl.textContent = boxes.length.toString();
+        // FPS smoothing
+        if (fpsSmoother.lastTs) {
+          const inst = 1000 / Math.max(1, (ts - fpsSmoother.lastTs));
+          fpsSmoother.fps = fpsSmoother.fps ? (fpsSmoother.fps * 0.85 + inst * 0.15) : inst;
+          fpsEl.textContent = fpsSmoother.fps.toFixed(1);
         }
+        fpsSmoother.lastTs = ts;
 
-        window.addEventListener('resize', resizeCanvas);
+      } catch (e) {
+        console.error(e);
+        setStatus("error (open console)");
+        running = false;
+      }
 
-        async function detectFrame() {
-            if (!isRunning) return;
+      requestAnimationFrame(loop);
+    }
 
-            statusDisplay.innerText = "Scanning...";
-            
-            // Perform detection on the full video frame
-            const predictions = await model.detect(video);
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            predictions.forEach(prediction => {
-                // Filter for traffic-related objects
-                // In a production app, you'd swap COCO-SSD for a specific TSR model
-                if (prediction.score > 0.5) {
-                    drawBoundingBox(prediction);
-                    handleNewDetection(prediction);
-                }
-            });
+    btnStart.addEventListener("click", async () => {
+      try {
+        await startCamera();
+        if (!session) await loadModel();
+        running = true;
+        fpsSmoother.lastTs = 0;
+        requestAnimationFrame(loop);
+        setStatus("running");
+      } catch (e) {
+        console.error(e);
+        setStatus("camera/model error (console)");
+      }
+    });
 
-            requestAnimationFrame(detectFrame);
-        }
+    btnStop.addEventListener("click", () => stopCamera());
 
-        function drawBoundingBox(prediction) {
-            const [x, y, width, height] = prediction.bbox;
-            
-            // Scale detection coordinates to display coordinates
-            const scaleX = canvas.width / video.videoWidth;
-            const scaleY = canvas.height / video.videoHeight;
+    btnFlip.addEventListener("click", async () => {
+      facingMode = (facingMode === "environment") ? "user" : "environment";
+      stopCamera();
+      await startCamera();
+      setStatus("camera flipped");
+      if (session) { running = true; requestAnimationFrame(loop); setStatus("running"); }
+    });
 
-            ctx.strokeStyle = "#00e676";
-            ctx.lineWidth = 4;
-            ctx.strokeRect(x * scaleX, y * scaleY, width * scaleX, height * scaleY);
-
-            ctx.fillStyle = "#00e676";
-            const label = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
-            ctx.font = "bold 16px sans-serif";
-            ctx.fillText(label, x * scaleX, (y * scaleY) - 10);
-        }
-
-        function handleNewDetection(prediction) {
-            // Simple Debouncing: Only add to gallery if significantly new or high confidence
-            // To prevent flickering/spamming
-            const now = Date.now();
-            const isDuplicate = lastDetections.some(d => 
-                d.class === prediction.class && 
-                Math.abs(d.bbox[0] - prediction.bbox[0]) < 50
-            );
-
-            if (!isDuplicate) {
-                addThumbnail(prediction);
-                detectionCount++;
-                countDisplay.innerText = detectionCount;
-                
-                lastDetections.push({ ...prediction, time: now });
-                if (lastDetections.length > 5) lastDetections.shift();
-            }
-        }
-
-        function addThumbnail(prediction) {
-            const [x, y, width, height] = prediction.bbox;
-            
-            // Create a temporary canvas to crop the detection
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = 100;
-            thumbCanvas.height = 100;
-            const thumbCtx = thumbCanvas.getContext('2d');
-
-            // Draw the specific area from the video
-            thumbCtx.drawImage(video, x, y, width, height, 0, 0, 100, 100);
-
-            const container = document.createElement('div');
-            container.className = 'thumb-container';
-            
-            const img = new Image();
-            img.src = thumbCanvas.toDataURL();
-            
-            const label = document.createElement('div');
-            label.className = 'thumb-label';
-            label.innerText = prediction.class.toUpperCase();
-
-            container.appendChild(img);
-            container.appendChild(label);
-            gallery.prepend(container);
-        }
-
-        clearBtn.onclick = () => {
-            gallery.innerHTML = '';
-            detectionCount = 0;
-            countDisplay.innerText = '0';
-        };
-
-        startBtn.onclick = startCamera;
-
-        // Initialize model on load
-        init();
-    </script>
+    // Optional: auto-resize overlay once metadata loaded
+    video.addEventListener("loadedmetadata", resizeOverlay);
+  </script>
 </body>
 </html>
