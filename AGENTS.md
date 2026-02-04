@@ -65,366 +65,110 @@ Each mode in `mode/*/` is a **standalone, single-file web application** containi
 - **Language**: Set appropriate lang attribute: `<html lang="vi">` or `<html lang="en">`
 
 ### CSS Standards
-**Use CSS Custom Properties for theming:**
-```css
-:root {
-  --bg: #f7f7f8;
-  --text: #111214;
-  --muted: rgba(17,18,20,.75);
-  --border: rgba(20,20,20,.14);
-  --accent: #2563eb;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0c0f14;
-    --text: #f2f5f7;
-    --muted: rgba(242,245,247,.78);
-    --border: rgba(255,255,255,.14);
-  }
-}
-```
-
-**Mobile-First Responsive Design:**
-```css
-/* Base styles for mobile */
-.container {
-  padding: 18px;
-}
-
-/* Desktop overrides */
-@media (min-width: 720px) {
-  .container {
-    padding: 24px;
-  }
-}
-```
-
-**Safe Area Handling for Notch/Island:**
-```css
-.wrap {
-  padding-bottom: calc(18px + env(safe-area-inset-bottom));
-}
-```
+- Use CSS custom properties for theming (light/dark mode via `prefers-color-scheme`)
+- Mobile-first responsive design (base styles for mobile, `@media (min-width: 720px)` for desktop)
+- Handle safe areas for notch/island using `env(safe-area-inset-*)`
+- Use semantic color names (--bg, --text, --muted, --border, --accent)
 
 ### JavaScript Standards
-
-**Use Modern ES6+ Features:**
-- Arrow functions: `const myFunc = () => {}`
-- Async/await for asynchronous operations
-- Template literals: `` `Hello ${name}` ``
-- Destructuring: `const {x, y, width, height} = bbox;`
-- Const/let (never var)
-
-**Model Loading Pattern:**
-```javascript
-let model = null;
-
-async function init() {
-  try {
-    model = await cocoSsd.load();
-    // Update UI to show ready state
-  } catch (err) {
-    // Graceful error handling with user feedback
-    console.error(err);
-  }
-}
-```
-
-**Camera Access Pattern:**
-```javascript
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { 
-        facingMode: "environment",  // Rear camera on mobile
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    });
-    video.srcObject = stream;
-  } catch (err) {
-    alert("Camera access denied or not available. Ensure you are using HTTPS.");
-  }
-}
-```
-
-**Detection Loop Pattern (using requestAnimationFrame):**
-```javascript
-async function detectFrame() {
-  if (!isRunning) return;
-  
-  const predictions = await model.detect(video);
-  
-  // Process predictions
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  predictions.forEach(prediction => {
-    if (prediction.score > 0.5) {
-      drawBoundingBox(prediction);
-    }
-  });
-  
-  requestAnimationFrame(detectFrame);
-}
-```
-
-**Canvas Scaling for Overlays:**
-```javascript
-function drawBoundingBox(prediction) {
-  const [x, y, width, height] = prediction.bbox;
-  
-  // Scale detection coords to display coords
-  const scaleX = canvas.width / video.videoWidth;
-  const scaleY = canvas.height / video.videoHeight;
-  
-  ctx.strokeStyle = "#00e676";
-  ctx.lineWidth = 4;
-  ctx.strokeRect(x * scaleX, y * scaleY, width * scaleX, height * scaleY);
-}
-```
+- Use ES6+ features: arrow functions, async/await, template literals, destructuring
+- Never use `var`, always use `const` or `let`
+- Model loading: async initialization with try/catch and user feedback
+- Camera access: `getUserMedia` with `facingMode: "environment"` for rear camera, ideal resolution 1280x720
+- Detection loops: use `requestAnimationFrame` (never `setInterval`)
+- Canvas overlays: scale detection coordinates to match display dimensions
+- Clear canvas between frames for clean overlays
 
 ### Performance Optimization
-
-**Critical Performance Guidelines:**
-1. **Use requestAnimationFrame** for all rendering loops (never setInterval)
-2. **Debounce detection events** to prevent UI spam and excessive processing
-3. **Clear canvas between frames**: `ctx.clearRect(0, 0, canvas.width, canvas.height)`
-4. **Prefer lightweight models**: COCO-SSD, MobileNet-based architectures
-5. **Throttle predictions** if FPS drops below 15fps
-6. **Lazy-load models**: Only initialize when user starts a mode
-7. **Dispose of models**: Call `model.dispose()` when switching modes
-
-**Debouncing Example:**
-```javascript
-let lastDetections = [];
-
-function handleNewDetection(prediction) {
-  const now = Date.now();
-  const isDuplicate = lastDetections.some(d => 
-    d.class === prediction.class && 
-    Math.abs(d.bbox[0] - prediction.bbox[0]) < 50
-  );
-  
-  if (!isDuplicate) {
-    addToGallery(prediction);
-    lastDetections.push({ ...prediction, time: now });
-    if (lastDetections.length > 5) lastDetections.shift();
-  }
-}
-```
+1. Use `requestAnimationFrame` for rendering loops (never `setInterval`)
+2. Debounce detection events to prevent UI spam (track recent detections, compare positions)
+3. Clear canvas between frames
+4. Prefer lightweight models (COCO-SSD, MobileNet-based)
+5. Throttle predictions if FPS drops below 15
+6. Lazy-load models (initialize only when mode starts)
+7. Dispose models when switching modes (`model.dispose()`)
+8. Stop camera streams when exiting (`track.stop()` on all tracks)
 
 ---
 
 ## Bilingual Support (Vietnamese/English)
 
-### Implementation Pattern
-All text must support both Vietnamese and English using a dictionary-based approach.
-
-**Dictionary Structure:**
-```javascript
-const dict = {
-  vi: {
-    intro: "OpenADAS là hệ thống hỗ trợ lái xe...",
-    startBtn: "Bắt đầu",
-    stopBtn: "Dừng lại"
-  },
-  en: {
-    intro: "OpenADAS is a driver assistance system...",
-    startBtn: "Start",
-    stopBtn: "Stop"
-  }
-};
-```
-
-**Language Detection & Persistence:**
-```javascript
-// Auto-detect from browser
-const auto = (navigator.language || "").startsWith("vi") ? "vi" : "en";
-
-// Load from localStorage or use auto-detected
-const lang = localStorage.getItem("openadas_lang") || auto;
-
-// Apply language
-function setLang(l) {
-  const t = dict[l];
-  document.documentElement.lang = l;
-  document.getElementById("t_intro").innerHTML = t.intro;
-  // ... update all text elements
-  localStorage.setItem("openadas_lang", l);
-}
-```
-
-**HTML Element Structure:**
-```html
-<p id="t_intro">Default text (will be replaced)</p>
-<button id="t_startBtn">Start</button>
-```
-
-### Language Toggle Button
-Always provide a language switcher:
-```html
-<button class="lang" id="langBtn">VI / EN</button>
-```
-
-```javascript
-document.getElementById("langBtn").onclick = function() {
-  lang = lang === "vi" ? "en" : "vi";
-  setLang(lang);
-};
-```
+**Implementation Requirements:**
+- Use dictionary-based approach with `vi` and `en` keys
+- Auto-detect language from `navigator.language` (check for "vi" prefix)
+- Persist language choice in `localStorage` with key `openadas_lang`
+- Update `document.documentElement.lang` when language changes
+- Use IDs prefixed with `t_` for translatable elements (e.g., `id="t_intro"`)
+- Provide language toggle button labeled "VI / EN"
+- Reference `index.html` for complete implementation pattern
 
 ---
 
 ## Creating New ADAS Modes
 
-1. Create directory: `mkdir -p mode/my-new-mode`
-2. Copy `mode/traffic-sign/index.html` as reference
-3. Implement: model loading, camera access, detection loop, overlays, bilingual UI
-4. Add card to root `index.html`:
-   ```html
-   <a class="card m4" href="./mode/my-new-mode/index.html">
-     <div class="row">
-       <div class="accent"></div>
-       <div class="icon">🚨</div>
-       <div>
-         <p class="title" id="t_m4">Mode Name</p>
-         <p class="desc" id="t_d4">Mode description.</p>
-       </div>
-     </div>
-   </a>
-   ```
-5. Test on mobile devices
+**Process:**
+1. Create directory: `mode/my-new-mode/`
+2. Copy `mode/traffic-sign/index.html` as starting template
+3. Implement: model loading, camera access, detection loop, canvas overlays, bilingual UI
+4. Add mode card to root `index.html` with unique class (e.g., `m4`), icon, and bilingual title/description IDs
+5. Test on mobile devices (Android + iOS)
 
-**Required components**: Loading screen, error handling, start/stop controls, overlays, bilingual UI (VI/EN), dark mode, performance monitoring
+**Required Components:**
+- Loading screen with status messages
+- Error handling for camera access and model loading
+- Start/stop controls
+- Canvas overlays for detections
+- Bilingual UI (VI/EN)
+- Dark mode support via CSS custom properties
+- Performance monitoring (FPS, detection count)
 
 ---
 
 ## AI/ML Model Guidelines
 
 ### Model Selection Criteria
-1. **Mobile-Optimized**: Must run efficiently on smartphones (target: 15+ FPS)
-2. **Lightweight**: Prefer quantized models (<10MB)
-3. **On-Device Only**: No cloud inference, no network requests for predictions
-4. **Browser-Compatible**: Must work with TensorFlow.js or MediaPipe
-5. **Proven Accuracy**: Use established models or thoroughly validated custom models
+1. Mobile-optimized (target: 15+ FPS on mid-range 2020+ phones)
+2. Lightweight (<10MB, prefer quantized models)
+3. On-device only (no cloud inference, no network requests)
+4. Browser-compatible (TensorFlow.js or MediaPipe)
+5. Proven accuracy (established models or thoroughly validated)
 
 ### Recommended Models
-- **Object Detection**: COCO-SSD, MobileNet-SSD
-- **Face/Pose Detection**: MediaPipe Face Mesh, Pose Estimation
-- **Segmentation**: BodyPix, MediaPipe Selfie Segmentation
-- **Custom Models**: Convert to TensorFlow.js format, quantize to INT8/FP16
+- Object Detection: COCO-SSD, MobileNet-SSD
+- Face/Pose: MediaPipe Face Mesh, Pose Estimation
+- Segmentation: BodyPix, MediaPipe Selfie Segmentation
+- Custom Models: Convert to TensorFlow.js, quantize to INT8/FP16
 
-### Model Loading Best Practices
-```javascript
-// Show loading screen
-const loader = document.getElementById('loader');
-
-async function loadModel() {
-  try {
-    // Update status for user feedback
-    document.getElementById('load-status').innerText = "Loading model...";
-    
-    const model = await tf.loadLayersModel('path/to/model.json');
-    // OR
-    const model = await cocoSsd.load();
-    
-    // Hide loader
-    loader.classList.add('hidden');
-    return model;
-  } catch (err) {
-    document.getElementById('load-status').innerText = 
-      "Error: Check HTTPS and network connection.";
-    console.error('Model loading failed:', err);
-    throw err;
-  }
-}
-```
-
-### Model Disposal
-```javascript
-// When user exits mode or switches modes
-function cleanup() {
-  if (model) {
-    model.dispose();
-    model = null;
-  }
-  // Stop camera stream
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(track => track.stop());
-  }
-}
-```
-
-### Performance Monitoring
-```javascript
-let frameCount = 0;
-let lastTime = Date.now();
-
-function updateFPS() {
-  frameCount++;
-  const now = Date.now();
-  if (now - lastTime > 1000) {
-    const fps = Math.round(frameCount * 1000 / (now - lastTime));
-    document.getElementById('fps').innerText = `${fps} FPS`;
-    frameCount = 0;
-    lastTime = now;
-  }
-}
-```
+### Best Practices
+- Show loading screen during model initialization
+- Update loading status text for user feedback
+- Handle errors gracefully with clear messages
+- Hide loader and enable UI only after successful load
+- Dispose models when exiting mode (`model.dispose()`)
+- Stop camera streams on cleanup
+- Monitor FPS (calculate frames per second, display to user)
 
 ---
 
-## Privacy & Responsible AI Implementation
+## Privacy & Responsible AI
 
 ### Non-Negotiable Rules
-1. **NO video/image transmission to servers** - All processing must be on-device
-2. **NO data storage without explicit user consent** - Don't save frames, detections, or logs automatically
-3. **Camera access requires clear user action** - No auto-start, always require button press
-4. **Assistive warnings only** - Never implement autonomous control or intervention
-5. **Fail-safe design** - System failure must not cause dangerous situations
+1. **NO** video/image transmission to servers - all processing on-device
+2. **NO** data storage without explicit user consent
+3. **NO** auto-start camera - require explicit user action (button press)
+4. **Assistive warnings only** - never implement autonomous control
+5. **Fail-safe design** - system failures must not cause danger
 
-### Privacy-Preserving Patterns
+### Implementation Requirements
+- Process video frames in memory only (never upload via `fetch()` or similar)
+- If collecting metadata, require explicit consent and anonymize (no identifying info, no images, no location)
+- Store minimal data in localStorage only
 
-**Video Processing:**
-```javascript
-// ✅ GOOD: Process in memory only
-async function detectFrame() {
-  const predictions = await model.detect(video);
-  // Process predictions...
-  // Video data never leaves this function
-}
-
-// ❌ BAD: Don't do this
-function uploadFrame() {
-  canvas.toBlob(blob => {
-    fetch('/api/analyze', { method: 'POST', body: blob }); // NO!
-  });
-}
-```
-
-**Optional Data Collection (if needed):**
-```javascript
-// Only with explicit user consent
-function saveAnonymizedMetadata() {
-  if (!userConsentGiven) return;
-  
-  const metadata = {
-    timestamp: Date.now(),
-    detectionCount: count,
-    // NO identifying information
-    // NO images or video
-    // NO location data
-  };
-  localStorage.setItem('stats', JSON.stringify(metadata));
-}
-```
-
-### Alert System Guidelines
-- **Visual**: High-contrast icons, min 60px for glance visibility
-- **Audio**: Short, distinct sounds per alert type
-- **Frequency**: Debounce 3-5 seconds between same alert type
-- **Clarity**: Actionable messages ("STOP SIGN AHEAD" not "Object detected")
+### Alert System
+- Visual: High-contrast icons, minimum 60px for glance visibility
+- Audio: Short, distinct sounds per alert type
+- Frequency: Debounce 3-5 seconds between same alert
+- Messages: Actionable and clear (e.g., "STOP SIGN AHEAD")
 
 ---
 
@@ -442,104 +186,19 @@ function saveAnonymizedMetadata() {
 - Memory: < 200MB
 - Detection latency: < 100ms
 
-**Testing Video Files**:
-```javascript
-<input type="file" accept="video/*" id="videoFile">
-
-document.getElementById('videoFile').onchange = function(e) {
-  const file = e.target.files[0];
-  video.src = URL.createObjectURL(file);
-  video.play();
-  startDetection();
-};
-```
+**Testing Video Files**: Add file input (`accept="video/*"`), create object URL from file, set as video source
 
 ---
 
-## Common Code Patterns
+## Common Patterns
 
-### Full-Screen Mobile Layout
-```css
-body, html {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+**Full-Screen Mobile Layout**: Flexbox body/html (100% height), absolute-positioned video/canvas centered with `transform: translate(-50%, -50%)`, `object-fit: cover`
 
-#container {
-  position: relative;
-  flex-grow: 1;
-  width: 100%;
-  overflow: hidden;
-}
+**Overlay UI**: Absolute positioning with `pointer-events: none` for passthrough, re-enable on interactive elements with `pointer-events: auto`
 
-video, canvas {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-```
+**CDN Dependencies**: Load from jsdelivr.net - TensorFlow.js, COCO-SSD, MediaPipe
 
-### Overlay UI Pattern
-```css
-#ui-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  padding: 20px;
-  z-index: 10;
-  pointer-events: none; /* Let touches pass through */
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
-}
-
-.button {
-  pointer-events: auto; /* Re-enable for interactive elements */
-}
-```
-
-### CDN Dependencies
-```html
-<!-- TensorFlow.js -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-
-<!-- COCO-SSD Model -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-
-<!-- MediaPipe (future) -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-```
-
-### State Management Pattern
-```javascript
-// Simple state object
-const state = {
-  isRunning: false,
-  model: null,
-  detectionCount: 0,
-  currentLang: 'en',
-  lastDetections: []
-};
-
-// State update with UI sync
-function updateState(updates) {
-  Object.assign(state, updates);
-  syncUI();
-}
-
-function syncUI() {
-  document.getElementById('count').innerText = state.detectionCount;
-  document.getElementById('status').innerText = state.isRunning ? 'Running' : 'Stopped';
-}
-```
+**State Management**: Simple state object with properties (isRunning, model, detectionCount, currentLang, lastDetections), update via `Object.assign()` and sync to UI
 
 ---
 
