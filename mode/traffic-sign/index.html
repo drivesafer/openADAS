@@ -3,339 +3,605 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Traffic Sign ONNX Test</title>
+  <title>Traffic Sign Pin (ONNX)</title>
   <style>
     :root { color-scheme: dark; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0b0f14; color:#e8eef6; }
-    header { padding:12px 14px; display:flex; gap:10px; align-items:center; justify-content:space-between; }
-    .btn { appearance:none; border:1px solid #2b3542; background:#141b24; color:#e8eef6; padding:10px 12px; border-radius:12px; font-weight:600; }
+    body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#0b0f14; color:#e8eef6; }
+    .app {
+      display:grid;
+      grid-template-columns: 280px 1fr;
+      gap:12px;
+      padding:12px;
+      max-width: 1200px;
+      margin:0 auto;
+    }
+    @media (max-width: 860px){
+      .app { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      border:1px solid #253041;
+      background:#0f1620;
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow: 0 6px 18px rgba(0,0,0,.25);
+    }
+    .card h3 {
+      margin:0;
+      padding:10px 12px;
+      font-size:14px;
+      letter-spacing:.2px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.02);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .muted { opacity:.8; font-weight:500; }
+    .btn {
+      appearance:none; border:1px solid #2b3542; background:#141b24; color:#e8eef6;
+      padding:9px 10px; border-radius:12px; font-weight:800; cursor:pointer;
+    }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
     .btn:active { transform: translateY(1px); }
-    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    label { font-size:13px; opacity:.9; display:flex; gap:8px; align-items:center; }
-    input[type="range"]{ width:140px; }
-    main { padding:0 12px 14px; }
-    .stage { position:relative; width:100%; max-width:980px; margin:0 auto; border:1px solid #253041; border-radius:16px; overflow:hidden; background:#000; }
+
+    /* Pinned column */
+    .pinnedWrap { padding:10px; }
+    .pinnedList { display:flex; flex-direction:column; gap:10px; }
+    .pinItem {
+      display:grid;
+      grid-template-columns: 92px 1fr;
+      gap:10px;
+      align-items:center;
+      padding:10px;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      background: rgba(0,0,0,.25);
+    }
+    .pinThumb {
+      width:92px; height:92px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:#000;
+      object-fit:contain;
+    }
+    .pinMeta { font-size:13px; line-height:1.25; }
+    .pinMeta b { font-size:14px; }
+    .pinMeta .small { font-size:12px; opacity:.8; }
+
+    /* Right side: preview + controls */
+    .rightCol { display:flex; flex-direction:column; gap:12px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .previewCard { flex: 1 1 520px; }
+    .controlsCard { flex: 1 1 260px; }
+
+    .preview {
+      position:relative;
+      width:100%;
+      aspect-ratio: 16 / 9;
+      background:#000;
+      overflow:hidden;
+    }
     video, canvas { position:absolute; inset:0; width:100%; height:100%; }
-    .stage::before { content:""; display:block; padding-top:56.25%; } /* 16:9 default; will still fit */
-    .hud { position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.12);
-           border-radius:12px; padding:8px 10px; font-size:13px; backdrop-filter: blur(6px); }
-    .muted { opacity:.8; }
-    a { color:#9ad1ff; text-decoration:none; }
+    .hud {
+      position:absolute; left:10px; bottom:10px;
+      background:rgba(0,0,0,.45);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:12px;
+      padding:8px 10px;
+      font-size:13px;
+      backdrop-filter: blur(6px);
+    }
+
+    .controls {
+      padding:10px 12px 12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    label { font-size:13px; opacity:.95; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    input[type="range"] { width: 180px; }
+    .kv { display:flex; gap:8px; align-items:center; }
+    .pill {
+      font-size:12px; padding:4px 8px;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:999px;
+      background: rgba(255,255,255,.04);
+      white-space:nowrap;
+    }
+    .footerTip { padding:10px 12px; border-top:1px solid rgba(255,255,255,.08); font-size:12px; opacity:.8; }
+    code { opacity:.95; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="row">
-      <button id="btnStart" class="btn">Start camera</button>
-      <button id="btnStop" class="btn" disabled>Stop</button>
-      <button id="btnFlip" class="btn" disabled>Flip (front/back)</button>
-    </div>
+  <div class="app">
+    <!-- LEFT: PINNED -->
+    <section class="card">
+      <h3>
+        <span>📌 Pinned traffic signs</span>
+        <span class="muted" id="pinCount">0</span>
+      </h3>
+      <div class="pinnedWrap">
+        <div class="pinnedList" id="pinnedList"></div>
+      </div>
+      <div class="footerTip">
+        Biển mới sẽ được “pin” lên trên cùng. <br/>
+        Tip: chạy bằng server tĩnh: <code>python -m http.server</code>
+      </div>
+    </section>
 
-    <div class="row">
-      <label>Conf
-        <input id="conf" type="range" min="0" max="1" step="0.01" value="0.35" />
-        <span id="confVal">0.35</span>
-      </label>
-      <label>NMS
-        <input id="nms" type="range" min="0" max="1" step="0.01" value="0.45" />
-        <span id="nmsVal">0.45</span>
-      </label>
-    </div>
-  </header>
+    <!-- RIGHT: PREVIEW + CONTROLS -->
+    <div class="rightCol">
+      <div class="row">
+        <!-- PREVIEW -->
+        <section class="card previewCard">
+          <h3>
+            <span>🎥 Camera preview</span>
+            <span class="kv">
+              <button class="btn" id="btnStart">Start</button>
+              <button class="btn" id="btnStop" disabled>Stop</button>
+              <button class="btn" id="btnFlip" disabled>Flip</button>
+            </span>
+          </h3>
+          <div class="preview" id="previewBox">
+            <video id="video" playsinline muted></video>
+            <canvas id="overlay"></canvas>
+            <div class="hud">
+              <div><b>Status:</b> <span id="status">idle</span></div>
+              <div class="muted">Provider: <span id="prov">-</span></div>
+              <div class="muted">FPS: <span id="fps">-</span> · Detect: <span id="boxes">-</span> · Pinned: <span id="pinsHud">0</span></div>
+            </div>
+          </div>
+        </section>
 
-  <main>
-    <div class="stage" id="stage">
-      <video id="video" playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <div class="hud" id="hud">
-        <div><b>Status:</b> <span id="status">idle</span></div>
-        <div class="muted">FPS: <span id="fps">-</span> · Boxes: <span id="boxes">-</span></div>
+        <!-- CONTROLS -->
+        <section class="card controlsCard">
+          <h3><span>⚙️ Params</span><span class="muted">lean</span></h3>
+          <div class="controls">
+            <label>
+              <span>Conf <span class="pill" id="confVal">0.20</span></span>
+              <input id="conf" type="range" min="0" max="1" step="0.01" value="0.20" />
+            </label>
+            <label>
+              <span>NMS <span class="pill" id="nmsVal">0.65</span></span>
+              <input id="nms" type="range" min="0" max="1" step="0.01" value="0.65" />
+            </label>
+            <label>
+              <span>Skip <span class="pill" id="skipVal">3</span></span>
+              <input id="skip" type="range" min="0" max="6" step="1" value="3" />
+            </label>
+
+            <label>
+              <span>Pin cooldown <span class="pill" id="coolVal">1.2s</span></span>
+              <input id="cool" type="range" min="0.2" max="3" step="0.1" value="1.2" />
+            </label>
+
+            <label>
+              <span>Max pinned <span class="pill" id="maxPinsVal">8</span></span>
+              <input id="maxPins" type="range" min="3" max="20" step="1" value="8" />
+            </label>
+
+            <div class="muted" style="font-size:12px; line-height:1.35;">
+              - Conf thấp bắt nhiều biển hơn nhưng dễ false positive.<br/>
+              - Skip cao tăng FPS cảm nhận (vẽ lại pin vẫn mượt).
+            </div>
+          </div>
+        </section>
       </div>
     </div>
-
-    <p class="muted" style="max-width:980px;margin:10px auto 0;padding:0 2px;">
-      Tip: chạy bằng server tĩnh. Ví dụ: <code>python -m http.server</code> trong thư mục này, rồi mở <code>http://localhost:8000</code>.
-    </p>
-  </main>
+  </div>
 
   <!-- ONNX Runtime Web (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 
   <script>
-    // ====== CONFIG ======
-    const MODEL_URL = "./trafic.onnx"; // <-- đổi nếu file bạn tên khác
-    const TARGET_FPS = 10;             // giới hạn vòng lặp
-    const MAX_DETECTIONS = 50;         // giới hạn box vẽ ra
-    const DEFAULT_INPUT_SIZE = 416;    // fallback nếu model shape dynamic/unknown
+    // ===== CONFIG =====
+    const MODEL_URL = "./model.onnx";  // đổi nếu cần
+    const INPUT_SIZE = 320;            // đã tối ưu speed
+    const MAX_DETECTIONS = 40;         // limit boxes
+    const PIN_THUMB = 96;              // thumb size
+    const PIN_PAD = 10;                // crop padding pixels in source coords (approx)
 
-    // ====== UI ======
+    // ===== UI =====
     const $ = (id) => document.getElementById(id);
     const video = $("video");
     const canvas = $("overlay");
     const ctx = canvas.getContext("2d");
+
     const statusEl = $("status");
+    const provEl = $("prov");
     const fpsEl = $("fps");
     const boxesEl = $("boxes");
+    const pinsHudEl = $("pinsHud");
+    const pinCountEl = $("pinCount");
+
     const btnStart = $("btnStart");
     const btnStop = $("btnStop");
     const btnFlip = $("btnFlip");
-    const confSlider = $("conf"), nmsSlider = $("nms");
-    const confVal = $("confVal"), nmsVal = $("nmsVal");
 
-    confSlider.addEventListener("input", () => confVal.textContent = (+confSlider.value).toFixed(2));
-    nmsSlider.addEventListener("input", () => nmsVal.textContent = (+nmsSlider.value).toFixed(2));
+    const conf = $("conf"), nms = $("nms"), skip = $("skip"), cool = $("cool"), maxPins = $("maxPins");
+    const confVal = $("confVal"), nmsVal = $("nmsVal"), skipVal = $("skipVal"), coolVal = $("coolVal"), maxPinsVal = $("maxPinsVal");
 
-    // ====== STATE ======
+    const pinnedListEl = $("pinnedList");
+
+    function setStatus(s){ statusEl.textContent = s; }
+
+    function syncSliders(){
+      confVal.textContent = (+conf.value).toFixed(2);
+      nmsVal.textContent  = (+nms.value).toFixed(2);
+      skipVal.textContent = (+skip.value).toFixed(0);
+      coolVal.textContent = (+cool.value).toFixed(1) + "s";
+      maxPinsVal.textContent = (+maxPins.value).toFixed(0);
+    }
+    [conf,nms,skip,cool,maxPins].forEach(el => el.addEventListener("input", syncSliders));
+    syncSliders();
+
+    // ===== STATE =====
     let stream = null;
+    let facingMode = "environment";
+    let running = false;
+
     let session = null;
     let inputName = null;
-    let inputW = DEFAULT_INPUT_SIZE, inputH = DEFAULT_INPUT_SIZE;
-    let facingMode = "environment"; // back cam by default
-    let running = false;
-    let lastFrameTs = 0;
-    let fpsSmoother = { lastTs: 0, fps: 0 };
 
-    // Offscreen canvas for preprocessing
+    // reuse preprocess canvas + buffers (speed)
     const workCanvas = document.createElement("canvas");
     const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
 
-    // ====== HELPERS ======
-    function setStatus(s) { statusEl.textContent = s; }
+    let inputBuffer = null;
+    let inputTensor = null;
 
-    function resizeOverlay() {
+    // last boxes (for drawing every RAF)
+    let lastInferBoxes = [];
+    let frameCount = 0;
+
+    // pin store
+    const pinned = []; // {url, ts, score, count, w,h}
+    const recentPins = []; // for cooldown matching: {ts, cx, cy, s} in normalized coords
+
+    // FPS smoothing
+    let lastLoopTs = 0;
+    let fps = 0;
+
+    // ===== UTILS =====
+    function resizeOverlay(){
       const rect = video.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(rect.width * dpr);
       canvas.height = Math.round(rect.height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+      ctx.setTransform(dpr,0,0,dpr,0,0);
     }
 
-    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 
-    function iou(a, b) {
-      const x1 = Math.max(a.x1, b.x1), y1 = Math.max(a.y1, b.y1);
-      const x2 = Math.min(a.x2, b.x2), y2 = Math.min(a.y2, b.y2);
-      const w = Math.max(0, x2 - x1), h = Math.max(0, y2 - y1);
-      const inter = w * h;
-      const areaA = Math.max(0, a.x2 - a.x1) * Math.max(0, a.y2 - a.y1);
-      const areaB = Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
-      return inter / (areaA + areaB - inter + 1e-9);
+    function iou(a,b){
+      const x1 = Math.max(a.x1,b.x1), y1 = Math.max(a.y1,b.y1);
+      const x2 = Math.min(a.x2,b.x2), y2 = Math.min(a.y2,b.y2);
+      const w = Math.max(0, x2-x1), h = Math.max(0, y2-y1);
+      const inter = w*h;
+      const areaA = Math.max(0,a.x2-a.x1)*Math.max(0,a.y2-a.y1);
+      const areaB = Math.max(0,b.x2-b.x1)*Math.max(0,b.y2-b.y1);
+      return inter/(areaA+areaB-inter+1e-9);
     }
 
-    function nms(boxes, iouThr) {
-      boxes.sort((p, q) => q.score - p.score);
-      const keep = [];
-      for (const b of boxes) {
-        let ok = true;
-        for (const k of keep) {
-          if (iou(b, k) > iouThr) { ok = false; break; }
-        }
-        if (ok) keep.push(b);
-        if (keep.length >= MAX_DETECTIONS) break;
+    function nmsBoxes(boxes, thr){
+      boxes.sort((p,q)=>q.score-p.score);
+      const keep=[];
+      for(const b of boxes){
+        let ok=true;
+        for(const k of keep){ if(iou(b,k)>thr){ ok=false; break; } }
+        if(ok) keep.push(b);
+        if(keep.length>=MAX_DETECTIONS) break;
       }
       return keep;
     }
 
-    // Letterbox resize -> returns {dataFloat32, scale, padX, padY, dstW, dstH}
-    function letterboxToTensor(videoEl, dstW, dstH) {
-      workCanvas.width = dstW;
-      workCanvas.height = dstH;
-
-      const srcW = videoEl.videoWidth;
-      const srcH = videoEl.videoHeight;
-
-      const r = Math.min(dstW / srcW, dstH / srcH);
-      const newW = Math.round(srcW * r);
-      const newH = Math.round(srcH * r);
-      const padX = Math.floor((dstW - newW) / 2);
-      const padY = Math.floor((dstH - newH) / 2);
-
-      // fill black
-      workCtx.clearRect(0, 0, dstW, dstH);
-      workCtx.fillStyle = "black";
-      workCtx.fillRect(0, 0, dstW, dstH);
-
-      // draw resized frame
-      workCtx.drawImage(videoEl, 0, 0, srcW, srcH, padX, padY, newW, newH);
-
-      const img = workCtx.getImageData(0, 0, dstW, dstH).data;
-      // YOLOv8 expects NCHW float32 in [0,1]
-      const out = new Float32Array(1 * 3 * dstH * dstW);
-      const hw = dstH * dstW;
-      for (let i = 0; i < hw; i++) {
-        const r8 = img[i * 4 + 0];
-        const g8 = img[i * 4 + 1];
-        const b8 = img[i * 4 + 2];
-        out[i] = r8 / 255;
-        out[i + hw] = g8 / 255;
-        out[i + 2 * hw] = b8 / 255;
+    function ensureInputReuse(){
+      const size = 1*3*INPUT_SIZE*INPUT_SIZE;
+      if(!inputBuffer || inputBuffer.length!==size){
+        inputBuffer = new Float32Array(size);
+        inputTensor = new ort.Tensor("float32", inputBuffer, [1,3,INPUT_SIZE,INPUT_SIZE]);
       }
-      return { tensorData: out, scale: r, padX, padY, newW, newH, dstW, dstH };
     }
 
-    // Parse YOLOv8-ish output: supports [1, C, N] or [1, N, C]
-    // We treat "score" as max(class_probs). If model has objectness separate, this still usually works as "max prob".
-    function parseYoloOutput(outputTensor, confThr, meta) {
-      const { scale, padX, padY, dstW, dstH } = meta;
-      const srcW = video.videoWidth;
-      const srcH = video.videoHeight;
+    // preprocess: letterbox + write into inputBuffer (NCHW float32)
+    function letterboxToInput(){
+      const dstW = INPUT_SIZE, dstH = INPUT_SIZE;
+      workCanvas.width = dstW; workCanvas.height = dstH;
 
-      const data = outputTensor.data;
-      const dims = outputTensor.dims;
+      const srcW = video.videoWidth, srcH = video.videoHeight;
+      const r = Math.min(dstW/srcW, dstH/srcH);
+      const newW = Math.round(srcW*r), newH = Math.round(srcH*r);
+      const padX = Math.floor((dstW-newW)/2), padY = Math.floor((dstH-newH)/2);
 
-      // Expect 3 dims
-      if (!dims || dims.length < 3) return [];
+      workCtx.fillStyle = "black";
+      workCtx.fillRect(0,0,dstW,dstH);
+      workCtx.drawImage(video, 0,0,srcW,srcH, padX,padY,newW,newH);
 
-      const d1 = dims[dims.length - 2];
-      const d2 = dims[dims.length - 1];
-
-      let N, C, layout; // layout: "CN" means [C,N], "NC" means [N,C]
-      if (d1 <= d2) { // heuristic: N tends to be bigger than C
-        C = d1; N = d2; layout = "CN";
-      } else {
-        N = d1; C = d2; layout = "NC";
+      const img = workCtx.getImageData(0,0,dstW,dstH).data;
+      const hw = dstH*dstW;
+      for(let i=0;i<hw;i++){
+        const r8=img[i*4+0], g8=img[i*4+1], b8=img[i*4+2];
+        inputBuffer[i] = r8/255;
+        inputBuffer[i+hw] = g8/255;
+        inputBuffer[i+2*hw] = b8/255;
       }
+      return { r, padX, padY };
+    }
 
-      const numClasses = Math.max(0, C - 4);
-      const boxes = [];
+    // parse YOLOv8-ish output: [1,C,N] or [1,N,C]; score = max(class probs)
+    function parseYoloOutput(outTensor, confThr, meta){
+      const data = outTensor.data;
+      const dims = outTensor.dims;
+      if(!dims || dims.length<3) return [];
 
-      for (let i = 0; i < N; i++) {
-        // read x,y,w,h
-        let x, y, w, h;
-        if (layout === "CN") {
-          x = data[0 * N + i];
-          y = data[1 * N + i];
-          w = data[2 * N + i];
-          h = data[3 * N + i];
-        } else {
-          const base = i * C;
-          x = data[base + 0];
-          y = data[base + 1];
-          w = data[base + 2];
-          h = data[base + 3];
+      const d1 = dims[dims.length-2];
+      const d2 = dims[dims.length-1];
+      let N,C,layout;
+      if(d1<=d2){ C=d1; N=d2; layout="CN"; }
+      else { N=d1; C=d2; layout="NC"; }
+
+      const numClasses = Math.max(0, C-4);
+      const srcW = video.videoWidth, srcH = video.videoHeight;
+      const { r, padX, padY } = meta;
+
+      const boxes=[];
+      for(let i=0;i<N;i++){
+        let x,y,w,h;
+        if(layout==="CN"){
+          x=data[0*N+i]; y=data[1*N+i]; w=data[2*N+i]; h=data[3*N+i];
+        }else{
+          const base=i*C;
+          x=data[base+0]; y=data[base+1]; w=data[base+2]; h=data[base+3];
         }
 
-        // score = max class prob (or whatever follows)
-        let score = 0;
-        if (numClasses > 0) {
-          if (layout === "CN") {
-            for (let c = 4; c < C; c++) score = Math.max(score, data[c * N + i]);
-          } else {
-            const base = i * C;
-            for (let c = 4; c < C; c++) score = Math.max(score, data[base + c]);
+        let score=0;
+        if(numClasses>0){
+          if(layout==="CN"){
+            for(let c=4;c<C;c++) score=Math.max(score, data[c*N+i]);
+          }else{
+            const base=i*C;
+            for(let c=4;c<C;c++) score=Math.max(score, data[base+c]);
           }
-        } else {
-          // if no class dimension, just accept all with a dummy score
-          score = 1;
-        }
+        } else score=1;
 
-        if (score < confThr) continue;
+        if(score<confThr) continue;
 
-        // YOLOv8 outputs are in pixels relative to model input (dstW/dstH)
-        // Convert center xywh -> corners in letterboxed space
-        let x1 = x - w / 2, y1 = y - h / 2, x2 = x + w / 2, y2 = y + h / 2;
+        // xywh in model input pixels (INPUT_SIZE)
+        let x1=x-w/2, y1=y-h/2, x2=x+w/2, y2=y+h/2;
 
-        // Undo letterbox: from dst space -> original video space
-        x1 = (x1 - padX) / scale;
-        y1 = (y1 - padY) / scale;
-        x2 = (x2 - padX) / scale;
-        y2 = (y2 - padY) / scale;
+        // undo letterbox to source coords
+        x1 = (x1 - padX)/r; y1 = (y1 - padY)/r;
+        x2 = (x2 - padX)/r; y2 = (y2 - padY)/r;
 
-        // Clamp to source frame
-        x1 = clamp(x1, 0, srcW);
-        y1 = clamp(y1, 0, srcH);
-        x2 = clamp(x2, 0, srcW);
-        y2 = clamp(y2, 0, srcH);
+        x1=clamp(x1,0,srcW); y1=clamp(y1,0,srcH);
+        x2=clamp(x2,0,srcW); y2=clamp(y2,0,srcH);
 
-        // reject tiny / invalid
-        if ((x2 - x1) < 4 || (y2 - y1) < 4) continue;
-
-        boxes.push({ x1, y1, x2, y2, score });
+        if((x2-x1)<6 || (y2-y1)<6) continue;
+        boxes.push({x1,y1,x2,y2,score});
       }
-
       return boxes;
     }
 
-    function draw(boxes) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // group “cụm biển” bằng cách union các box gần nhau / overlap nhẹ
+    function groupBoxes(boxes){
+      // simple greedy clustering
+      const used = new Array(boxes.length).fill(false);
+      const groups = [];
 
+      function close(a,b){
+        // overlap OR center distance small relative to size
+        const ov = iou(a,b);
+        if(ov > 0.10) return true;
+        const acx=(a.x1+a.x2)/2, acy=(a.y1+a.y2)/2;
+        const bcx=(b.x1+b.x2)/2, bcy=(b.y1+b.y2)/2;
+        const dx=acx-bcx, dy=acy-bcy;
+        const dist = Math.hypot(dx,dy);
+        const as = Math.max(a.x2-a.x1, a.y2-a.y1);
+        const bs = Math.max(b.x2-b.x1, b.y2-b.y1);
+        return dist < 0.55 * (as + bs);
+      }
+
+      for(let i=0;i<boxes.length;i++){
+        if(used[i]) continue;
+        used[i]=true;
+        let g = { x1: boxes[i].x1, y1: boxes[i].y1, x2: boxes[i].x2, y2: boxes[i].y2, score: boxes[i].score, count:1 };
+
+        let changed=true;
+        while(changed){
+          changed=false;
+          for(let j=0;j<boxes.length;j++){
+            if(used[j]) continue;
+            // if close to current group bbox, merge
+            const b=boxes[j];
+            const gb = {x1:g.x1,y1:g.y1,x2:g.x2,y2:g.y2};
+            if(close(gb,b)){
+              used[j]=true;
+              g.x1 = Math.min(g.x1, b.x1);
+              g.y1 = Math.min(g.y1, b.y1);
+              g.x2 = Math.max(g.x2, b.x2);
+              g.y2 = Math.max(g.y2, b.y2);
+              g.score = Math.max(g.score, b.score);
+              g.count += 1;
+              changed=true;
+            }
+          }
+        }
+
+        groups.push(g);
+      }
+
+      groups.sort((a,b)=>b.score-a.score);
+      return groups.slice(0, 3); // chỉ pin tối đa top 3 cụm mỗi lần infer
+    }
+
+    function isNewPin(group, nowMs){
+      // signature based on normalized center+size
       const vw = video.videoWidth, vh = video.videoHeight;
-      if (!vw || !vh) return;
+      const cx = ((group.x1+group.x2)/2) / vw;
+      const cy = ((group.y1+group.y2)/2) / vh;
+      const s  = Math.max((group.x2-group.x1)/vw, (group.y2-group.y1)/vh);
 
-      // Map video pixel coords -> displayed CSS pixel coords
+      const cooldownMs = (+cool.value) * 1000;
+
+      // remove old
+      while(recentPins.length && nowMs - recentPins[0].ts > cooldownMs){
+        recentPins.shift();
+      }
+
+      // check near-duplicate within cooldown
+      for(const p of recentPins){
+        const dc = Math.hypot(cx - p.cx, cy - p.cy);
+        const ds = Math.abs(s - p.s);
+        if(dc < 0.08 && ds < 0.12) return false;
+      }
+
+      recentPins.push({ ts: nowMs, cx, cy, s });
+      return true;
+    }
+
+    function cropAndPin(group){
+      const vw = video.videoWidth, vh = video.videoHeight;
+
+      // add padding in source pixels
+      const pad = PIN_PAD;
+      let x1 = Math.floor(group.x1 - pad);
+      let y1 = Math.floor(group.y1 - pad);
+      let x2 = Math.ceil(group.x2 + pad);
+      let y2 = Math.ceil(group.y2 + pad);
+
+      x1 = clamp(x1, 0, vw-1);
+      y1 = clamp(y1, 0, vh-1);
+      x2 = clamp(x2, 1, vw);
+      y2 = clamp(y2, 1, vh);
+
+      const cw = Math.max(2, x2-x1);
+      const ch = Math.max(2, y2-y1);
+
+      // draw crop into small canvas
+      const c = document.createElement("canvas");
+      c.width = PIN_THUMB;
+      c.height = PIN_THUMB;
+      const cctx = c.getContext("2d");
+
+      // contain-fit into square while preserving ratio
+      const scale = Math.min(PIN_THUMB / cw, PIN_THUMB / ch);
+      const dw = Math.round(cw * scale);
+      const dh = Math.round(ch * scale);
+      const dx = Math.floor((PIN_THUMB - dw)/2);
+      const dy = Math.floor((PIN_THUMB - dh)/2);
+
+      cctx.fillStyle = "black";
+      cctx.fillRect(0,0,PIN_THUMB,PIN_THUMB);
+      cctx.drawImage(video, x1,y1,cw,ch, dx,dy,dw,dh);
+
+      const url = c.toDataURL("image/jpeg", 0.80);
+
+      pinned.unshift({
+        url,
+        ts: Date.now(),
+        score: group.score,
+        count: group.count,
+        w: cw,
+        h: ch
+      });
+
+      // keep max
+      const max = +maxPins.value;
+      while(pinned.length > max) pinned.pop();
+
+      renderPinned();
+    }
+
+    function renderPinned(){
+      pinnedListEl.innerHTML = "";
+      for(const item of pinned){
+        const el = document.createElement("div");
+        el.className = "pinItem";
+        const img = document.createElement("img");
+        img.className = "pinThumb";
+        img.src = item.url;
+        img.alt = "pinned sign";
+
+        const meta = document.createElement("div");
+        meta.className = "pinMeta";
+        const dt = new Date(item.ts);
+        const t = dt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+        meta.innerHTML = `
+          <b>Sign group</b>
+          <div class="small">Score: ${(item.score*100).toFixed(1)}% · Count: ${item.count}</div>
+          <div class="small">${t} · ROI: ${item.w}×${item.h}</div>
+        `;
+
+        el.appendChild(img);
+        el.appendChild(meta);
+        pinnedListEl.appendChild(el);
+      }
+      pinCountEl.textContent = pinned.length.toString();
+      pinsHudEl.textContent = pinned.length.toString();
+    }
+
+    function drawOverlay(boxes){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if(!vw || !vh) return;
+
       const rect = video.getBoundingClientRect();
-      const scaleX = rect.width / vw;
-      const scaleY = rect.height / vh;
+      const sx = rect.width / vw;
+      const sy = rect.height / vh;
 
       ctx.lineWidth = 2;
-      ctx.font = "13px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.font = "13px system-ui,-apple-system,Segoe UI,Roboto,Arial";
       ctx.textBaseline = "top";
 
-      for (const b of boxes) {
-        const x = b.x1 * scaleX;
-        const y = b.y1 * scaleY;
-        const w = (b.x2 - b.x1) * scaleX;
-        const h = (b.y2 - b.y1) * scaleY;
-
-        // box
+      for(const b of boxes){
+        const x = b.x1*sx, y=b.y1*sy, w=(b.x2-b.x1)*sx, h=(b.y2-b.y1)*sy;
         ctx.strokeStyle = "rgba(0,255,180,0.95)";
-        ctx.strokeRect(x, y, w, h);
+        ctx.strokeRect(x,y,w,h);
 
-        // score tag
-        const label = (b.score * 100).toFixed(1) + "%";
+        const label = (b.score*100).toFixed(1) + "%";
         const pad = 4;
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(x, y, tw + pad * 2, 18);
+        ctx.fillRect(x,y,tw+pad*2,18);
         ctx.fillStyle = "rgba(0,255,180,0.95)";
-        ctx.fillText(label, x + pad, y + 2);
+        ctx.fillText(label, x+pad, y+2);
       }
     }
 
-    async function loadModel() {
-      // Make ORT load its WASM from the same CDN folder
+    // ===== MODEL/CAMERA =====
+    async function loadModel(){
+      setStatus("loading model…");
+
       ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
-      ort.env.wasm.numThreads = Math.min(4, (navigator.hardwareConcurrency || 4));
+      ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 4);
+      ort.env.wasm.simd = true;
       ort.env.logLevel = "warning";
 
-      setStatus("loading model…");
-      session = await ort.InferenceSession.create(MODEL_URL, {
-        executionProviders: ["wasm"] // start simple; later you can try webgl if desired
-      });
+      // Prefer GPU; fallback to wasm
+      const providers = ["webgpu", "webgl", "wasm"];
 
+      session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: providers });
       inputName = session.inputNames[0];
 
-      // Try infer input shape
-      const meta = session.inputMetadata[inputName];
-      const dims = meta && meta.dimensions ? meta.dimensions : null;
-      // Expected [1,3,H,W] (may include dynamic -1)
-      if (dims && dims.length >= 4) {
-        const H = dims[dims.length - 2];
-        const W = dims[dims.length - 1];
-        if (Number.isFinite(H) && H > 0) inputH = H;
-        if (Number.isFinite(W) && W > 0) inputW = W;
-      }
+      ensureInputReuse();
 
-      // Fallback
-      if (!inputW || inputW <= 0) inputW = DEFAULT_INPUT_SIZE;
-      if (!inputH || inputH <= 0) inputH = DEFAULT_INPUT_SIZE;
+      // warm-up
+      await session.run({ [inputName]: inputTensor });
 
-      setStatus(`model ready (${inputW}x${inputH})`);
+      provEl.textContent = (session.executionProvider || "webgpu/webgl/wasm").toString();
+      setStatus("model ready");
     }
 
-    async function startCamera() {
-      if (stream) return;
+    async function startCamera(){
       setStatus("requesting camera…");
-
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode, width:{ideal:1280}, height:{ideal:720} },
         audio: false
       });
-
       video.srcObject = stream;
       await video.play();
-
-      // Ensure overlay matches size
       resizeOverlay();
       window.addEventListener("resize", resizeOverlay);
 
@@ -346,105 +612,117 @@
       setStatus("camera on");
     }
 
-    function stopCamera() {
+    function stopAll(){
       running = false;
-      if (stream) {
-        for (const t of stream.getTracks()) t.stop();
-        stream = null;
-      }
+      if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
       video.srcObject = null;
-
       btnStart.disabled = false;
       btnStop.disabled = true;
       btnFlip.disabled = true;
 
-      setStatus("stopped");
+      lastInferBoxes = [];
+      drawOverlay(lastInferBoxes);
+
       fpsEl.textContent = "-";
       boxesEl.textContent = "-";
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setStatus("stopped");
     }
 
-    async function loop(ts) {
-      if (!running) return;
+    // ===== MAIN LOOP =====
+    async function loop(ts){
+      if(!running) return;
 
-      // throttle
-      const minDt = 1000 / TARGET_FPS;
-      if (ts - lastFrameTs < minDt) {
-        requestAnimationFrame(loop);
-        return;
+      // smooth FPS (UI loop)
+      if(lastLoopTs){
+        const inst = 1000 / Math.max(1, ts-lastLoopTs);
+        fps = fps ? (fps*0.85 + inst*0.15) : inst;
       }
-      lastFrameTs = ts;
+      lastLoopTs = ts;
+      fpsEl.textContent = fps ? fps.toFixed(1) : "-";
 
-      try {
-        if (!session) await loadModel();
-        if (!video.videoWidth) { requestAnimationFrame(loop); return; }
+      const doInfer = (frameCount % ((+skip.value)+1) === 0);
+      frameCount++;
 
-        const confThr = +confSlider.value;
-        const nmsThr = +nmsSlider.value;
+      if(doInfer && session && video.videoWidth){
+        try{
+          const confThr = +conf.value;
+          const nmsThr  = +nms.value;
 
-        // preprocess
-        const meta = letterboxToTensor(video, inputW, inputH);
-        const input = new ort.Tensor("float32", meta.tensorData, [1, 3, inputH, inputW]);
+          const meta = letterboxToInput();
+          const out = await session.run({ [inputName]: inputTensor });
 
-        // infer
-        const outputs = await session.run({ [inputName]: input });
+          const outName = session.outputNames[0];
+          const outTensor = out[outName];
 
-        // pick first output tensor
-        const outName = session.outputNames[0];
-        const outTensor = outputs[outName];
+          let boxes = parseYoloOutput(outTensor, confThr, meta);
+          boxes = nmsBoxes(boxes, nmsThr);
 
-        // parse + nms
-        let boxes = parseYoloOutput(outTensor, confThr, meta);
-        boxes = nms(boxes, nmsThr);
+          lastInferBoxes = boxes;
+          boxesEl.textContent = boxes.length.toString();
 
-        // draw
-        draw(boxes);
+          // PIN LOGIC: group boxes -> pin new group(s)
+          const groups = groupBoxes(boxes);
+          const now = Date.now();
+          for(const g of groups){
+            // ignore huge ROI (often false positives covering most frame)
+            const area = (g.x2-g.x1) * (g.y2-g.y1);
+            const frameArea = video.videoWidth * video.videoHeight;
+            if(area > 0.35 * frameArea) continue;
 
-        // HUD
-        boxesEl.textContent = boxes.length.toString();
-        // FPS smoothing
-        if (fpsSmoother.lastTs) {
-          const inst = 1000 / Math.max(1, (ts - fpsSmoother.lastTs));
-          fpsSmoother.fps = fpsSmoother.fps ? (fpsSmoother.fps * 0.85 + inst * 0.15) : inst;
-          fpsEl.textContent = fpsSmoother.fps.toFixed(1);
+            if(isNewPin(g, now)){
+              cropAndPin(g);
+              // pin tối đa 1 group mỗi infer để giảm overhead & spam
+              break;
+            }
+          }
+
+        } catch(e){
+          console.error(e);
+          setStatus("infer error (console)");
         }
-        fpsSmoother.lastTs = ts;
-
-      } catch (e) {
-        console.error(e);
-        setStatus("error (open console)");
-        running = false;
       }
+
+      // draw overlay every frame for “mượt cảm nhận”
+      drawOverlay(lastInferBoxes);
 
       requestAnimationFrame(loop);
     }
 
-    btnStart.addEventListener("click", async () => {
-      try {
+    // ===== EVENTS =====
+    btnStart.addEventListener("click", async ()=>{
+      try{
         await startCamera();
-        if (!session) await loadModel();
+        if(!session) await loadModel();
         running = true;
-        fpsSmoother.lastTs = 0;
-        requestAnimationFrame(loop);
+        frameCount = 0;
+        lastLoopTs = 0;
+        fps = 0;
         setStatus("running");
-      } catch (e) {
+        requestAnimationFrame(loop);
+      } catch(e){
         console.error(e);
-        setStatus("camera/model error (console)");
+        setStatus("start error (console)");
       }
     });
 
-    btnStop.addEventListener("click", () => stopCamera());
+    btnStop.addEventListener("click", ()=> stopAll());
 
-    btnFlip.addEventListener("click", async () => {
+    btnFlip.addEventListener("click", async ()=>{
       facingMode = (facingMode === "environment") ? "user" : "environment";
-      stopCamera();
+      stopAll();
       await startCamera();
-      setStatus("camera flipped");
-      if (session) { running = true; requestAnimationFrame(loop); setStatus("running"); }
+      if(!session) await loadModel();
+      running = true;
+      frameCount = 0;
+      lastLoopTs = 0;
+      setStatus("running");
+      requestAnimationFrame(loop);
     });
 
-    // Optional: auto-resize overlay once metadata loaded
     video.addEventListener("loadedmetadata", resizeOverlay);
+
+    // initial empty state
+    renderPinned();
   </script>
 </body>
 </html>
