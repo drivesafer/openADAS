@@ -62,6 +62,14 @@
       <div class="h">Settings</div>
 
       <div class="row">
+        <div class="small">Source</div>
+        <select id="sourceSel">
+          <option value="camera" selected>Camera</option>
+          <option value="file">Debug video (input/test1.mp4)</option>
+        </select>
+      </div>
+
+      <div class="row">
         <div class="small">Camera</div>
         <select id="camSel"></select>
       </div>
@@ -75,7 +83,8 @@
       </div>
 
       <div class="small">
-        Hide menu to start. When a sign disappears, it will be pinned (cropped wider).
+        Hide menu to start. Source switching is shared from <code>fake-camera/detect.js</code>.
+        Any mode can import that module to enable camera or debug-file input.
       </div>
 
       <div id="status">Loading OpenCV...</div>
@@ -84,26 +93,26 @@
     <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
     <script type="module">
       import { createRedRingDetector } from './detect.js';
+      import { createVideoSourceController } from '../fake-camera/detect.js';
 
       const video = document.getElementById('vid');
       const outCanvas = document.getElementById('out');
       const pinsEl = document.getElementById('pins');
       const panel = document.getElementById('panel');
       const menuBtn = document.getElementById('menuBtn');
+      const sourceSel = document.getElementById('sourceSel');
       const camSel = document.getElementById('camSel');
       const modeSel = document.getElementById('modeSel');
       const statusEl = document.getElementById('status');
 
-      let stream = null;
       let detector = null;
       let running = false;
 
-      // --- Track / Pin state ---
       let track = null;
       const TRACK_MIN_MS = 220;
       const MISS_FRAMES_TO_END = 8;
       const PIN_COOLDOWN_MS = 1200;
-      const CLUSTER_WINDOW_MS = 700; // ✅ NEW: allow grouping signs that appear within this window
+      const CLUSTER_WINDOW_MS = 700;
       let lastPinTs = 0;
 
       const nowMs = () => performance.now();
@@ -111,51 +120,24 @@
       function waitOpenCV() {
         return new Promise(res => {
           const t = setInterval(() => {
-            if (window.cv && cv.Mat) { clearInterval(t); res(); }
+            if (window.cv && cv.Mat) {
+              clearInterval(t);
+              res();
+            }
           }, 30);
         });
       }
 
-      function waitVideoReady() {
-        return new Promise(res => {
-          if (video.videoWidth && video.videoHeight) return res();
-          const onMeta = () => { video.removeEventListener('loadedmetadata', onMeta); res(); };
-          video.addEventListener('loadedmetadata', onMeta);
-        });
-      }
-
-      async function listCameras() {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cams = devices.filter(d => d.kind === 'videoinput');
-        camSel.innerHTML = '';
-        cams.forEach((c, idx) => {
-          const opt = document.createElement('option');
-          opt.value = c.deviceId;
-          opt.textContent = c.label || `Camera ${idx+1}`;
-          camSel.appendChild(opt);
-        });
-        return cams;
-      }
-
-      async function startStream(deviceId) {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: 640, height: 480,
-            facingMode: "environment",
-            deviceId: deviceId ? { exact: deviceId } : undefined
-          },
-          audio: false
-        });
-
-        video.srcObject = stream;
-        await video.play();
-        await waitVideoReady(); // ✅ ensure we have real videoWidth/Height
-      }
+      const sourceController = createVideoSourceController({
+        video,
+        sourceSelect: sourceSel,
+        cameraSelect: camSel,
+        statusEl,
+        defaultDebugVideoSrc: '../../input/test1.mp4'
+      });
 
       function uiConfig() {
-        const mode = modeSel.value; // day|night
+        const mode = modeSel.value;
         return {
           profile: mode,
           tightness: (mode === 'day') ? 'med' : 'ultra'
@@ -165,7 +147,7 @@
       function relTime(msAgo) {
         const s = Math.max(0, Math.floor(msAgo / 1000));
         if (s < 60) return `${s}s ago`;
-        const m = Math.floor(s/60);
+        const m = Math.floor(s / 60);
         const ss = s % 60;
         return `${m}m${ss}s ago`;
       }
@@ -192,18 +174,23 @@
       }
 
       function snapshotCanvas() {
-        const w = video.videoWidth, h = video.videoHeight;
+        const w = video.videoWidth;
+        const h = video.videoHeight;
         const c = document.createElement('canvas');
-        c.width = w; c.height = h;
+        c.width = w;
+        c.height = h;
         c.getContext('2d').drawImage(video, 0, 0, w, h);
         return { w, h, c };
       }
 
       function cropToDataURL(frameCanvas, crop) {
         const out = document.createElement('canvas');
-        out.width = crop.width; out.height = crop.height;
+        out.width = crop.width;
+        out.height = crop.height;
         out.getContext('2d').drawImage(
-          frameCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height
+          frameCanvas,
+          crop.x, crop.y, crop.width, crop.height,
+          0, 0, crop.width, crop.height
         );
         return out.toDataURL('image/jpeg', 0.86);
       }
@@ -229,7 +216,9 @@
         card.appendChild(meta);
 
         pinsEl.prepend(card);
-        while (pinsEl.children.length > 5) pinsEl.removeChild(pinsEl.lastChild);
+        while (pinsEl.children.length > 5) {
+          pinsEl.removeChild(pinsEl.lastChild);
+        }
       }
 
       function updatePinTimes() {
@@ -255,8 +244,6 @@
         detector.onStable = (stable) => {
           const t = nowMs();
 
-          // --- cluster window logic ---
-          // If track exists and still within cluster window, union any new stable rects into clusterRect
           if (stable.length) {
             const rectNow = (stable.length >= 2)
               ? unionRects(stable.map(s => s.rect))
@@ -265,7 +252,7 @@
             if (!track) {
               track = {
                 startTs: t,
-                clusterUntil: t + CLUSTER_WINDOW_MS, // ✅ NEW
+                clusterUntil: t + CLUSTER_WINDOW_MS,
                 lastSeenTs: t,
                 missCount: 0,
                 frames: [],
@@ -274,25 +261,20 @@
             } else {
               track.lastSeenTs = t;
               track.missCount = 0;
-
-              // ✅ NEW: only expand clusterRect if within cluster window
-              if (t <= track.clusterUntil) {
-                track.clusterRect = unionRects([track.clusterRect, rectNow]);
-              } else {
-                // after window: keep using current clusterRect (do not keep growing forever)
-                // but still allow slight jitter smoothing by unioning with rectNow if overlapping a lot:
-                // (keep lean: just union anyway if center close)
-                track.clusterRect = unionRects([track.clusterRect, rectNow]);
-              }
+              track.clusterRect = unionRects([track.clusterRect, rectNow]);
             }
 
-            // store snapshots (light)
-            if (!track.frames.length || (t - track.frames[track.frames.length-1].ts) > 55) {
+            if (!track.frames.length || (t - track.frames[track.frames.length - 1].ts) > 55) {
               const snap = snapshotCanvas();
-              track.frames.push({ ts: t, canvas: snap.c, w: snap.w, h: snap.h, rect: track.clusterRect });
+              track.frames.push({
+                ts: t,
+                canvas: snap.c,
+                w: snap.w,
+                h: snap.h,
+                rect: track.clusterRect
+              });
               if (track.frames.length > 16) track.frames.shift();
             }
-
           } else if (track) {
             track.missCount++;
 
@@ -301,13 +283,10 @@
               const canPin = (t - lastPinTs) > PIN_COOLDOWN_MS;
 
               if (duration >= TRACK_MIN_MS && canPin && track.frames.length >= 4) {
-                // pick "middle-near-end" (~70%)
                 const idx = Math.min(track.frames.length - 2, Math.floor(track.frames.length * 0.7));
                 const pick = track.frames[idx];
-
-                const cropBase = pick.rect || track.clusterRect || {x:0,y:0,width:pick.w,height:pick.h};
+                const cropBase = pick.rect || track.clusterRect || { x: 0, y: 0, width: pick.w, height: pick.h };
                 const crop = expandRect(cropBase, pick.w, pick.h);
-
                 const url = cropToDataURL(pick.canvas, crop);
                 addPin(url, t);
                 lastPinTs = t;
@@ -340,29 +319,33 @@
 
       menuBtn.onclick = () => {
         const hidden = panel.classList.toggle('hidden');
-        setRunning(hidden); // hide => run
+        setRunning(hidden);
         menuBtn.textContent = hidden ? "MENU" : "HIDE";
       };
 
-      camSel.onchange = async () => {
-        const wasRunning = running;
+      sourceController.onBeforeSourceChange = () => {
         setRunning(false);
-        statusEl.textContent = "Switching camera...";
-        await startStream(camSel.value);
-        if (wasRunning) setRunning(true);
-        statusEl.textContent = wasRunning ? "Running..." : "Paused (menu open)";
+      };
+
+      sourceController.onAfterSourceChange = () => {
+        statusEl.textContent = running ? "Running..." : "Ready. Hide menu to start.";
+      };
+
+      sourceController.onSourceError = (e) => {
+        statusEl.textContent = `Source Error: ${e.message}`;
       };
 
       (async () => {
         statusEl.textContent = "Loading OpenCV...";
         await waitOpenCV();
 
-        statusEl.textContent = "Requesting camera permission...";
-        await startStream(null);
+        try {
+          await sourceController.init();
+          statusEl.textContent = "Ready. Hide menu to start.";
+        } catch (e) {
+          statusEl.textContent = `Init Error: ${e.message}`;
+        }
 
-        await listCameras();
-
-        statusEl.textContent = "Ready. Hide menu to start.";
         panel.classList.remove('hidden');
         menuBtn.textContent = "HIDE";
         setRunning(false);
