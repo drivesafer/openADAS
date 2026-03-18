@@ -1,0 +1,1436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="color-scheme" content="dark"/>
+  <title>Traffic Sign Number Capture</title>
+  <style>
+    :root{
+      --bg:#0b0b0b;
+      --panel:#111;
+      --line:#2a2a2a;
+      --green:#00ff66;
+      --yellow:#ffd166;
+      --red:#ff6b6b;
+      --muted:#b8b8b8;
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--bg);
+      color:#fff;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      overflow:hidden;
+    }
+    #stage{
+      position:relative;
+      width:100vw;
+      height:100vh;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 390px;
+    }
+    #viewer{
+      position:relative;
+      min-width:0;
+      height:100vh;
+      background:#000;
+    }
+    #out{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      background:#000;
+    }
+    video{display:none;}
+    #panel{
+      border-left:1px solid rgba(255,255,255,.1);
+      background:rgba(17,17,17,.96);
+      padding:14px;
+      overflow:auto;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .h{
+      font-size:14px;
+      color:var(--green);
+      letter-spacing:1px;
+      font-weight:800;
+      text-transform:uppercase;
+    }
+    .row{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    label{
+      font-size:12px;
+      color:var(--muted);
+    }
+    select,input,button{
+      background:#0f0f0f;
+      color:#fff;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:14px;
+      box-sizing:border-box;
+      width:100%;
+    }
+    button{
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btnRow{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .note{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+    .status{
+      font-size:12px;
+      color:var(--yellow);
+      line-height:1.45;
+      word-break:break-word;
+    }
+    .ok{ color: var(--green); }
+    .err{ color: var(--red); }
+    .card{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:10px;
+    }
+    .cardTitle{
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:8px;
+      text-transform:uppercase;
+      letter-spacing:.7px;
+    }
+    .mono{
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:12px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      line-height:1.4;
+    }
+    .big{
+      font-size:24px;
+      font-weight:800;
+      color:var(--green);
+    }
+    .small{
+      font-size:12px;
+      color:var(--muted);
+    }
+    #previewWrap{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .previewBox{
+      background:#090909;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:8px;
+    }
+    .previewLabel{
+      font-size:11px;
+      color:var(--muted);
+      margin-bottom:6px;
+      text-transform:uppercase;
+      letter-spacing:.6px;
+    }
+    canvas.preview{
+      width:100%;
+      aspect-ratio:1/1;
+      background:#000;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.08);
+    }
+    @media (max-width: 980px){
+      #stage{ grid-template-columns:1fr; }
+      #panel{
+        position:absolute;
+        right:0;
+        top:0;
+        width:min(92vw, 420px);
+        height:100vh;
+        z-index:5;
+        box-shadow:0 0 30px rgba(0,0,0,.4);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="viewer">
+      <canvas id="out"></canvas>
+      <video id="vid" playsinline muted></video>
+    </div>
+
+    <div id="panel">
+      <div class="h">Traffic Sign Number Capture</div>
+
+      <div class="row">
+        <label for="sourceSel">Source</label>
+        <select id="sourceSel">
+          <option value="camera" selected>Camera</option>
+          <option value="file">Debug video (input/test1.mp4)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="camSel">Camera</label>
+        <select id="camSel"></select>
+      </div>
+
+      <div class="grid2">
+        <div class="row">
+          <label for="profileSel">Profile</label>
+          <select id="profileSel">
+            <option value="auto" selected>Auto</option>
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="tightSel">HSV Tightness</label>
+          <select id="tightSel">
+            <option value="loose">Loose</option>
+            <option value="med" selected>Medium</option>
+            <option value="tight">Tight</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">OCR engine</div>
+        <div id="ocrStateEl" class="small">Not loaded yet.</div>
+        <div id="ocrProgressEl" class="small">First start downloads the OCR worker and English data once. Later runs should reuse browser cache.</div>
+      </div>
+
+      <div class="row">
+        <label for="cooldownEl">Capture Cooldown (ms)</label>
+        <input id="cooldownEl" type="number" value="8000" min="1000" step="500" />
+      </div>
+
+      <div class="btnRow">
+        <button id="startBtn">Start</button>
+        <button id="stopBtn">Stop</button>
+      </div>
+
+      <div class="note">
+        This mode reuses <code>../fake-camera/detect.js</code> for camera/debug input and <code>../traffic-sign/detect.js</code> for ring detection, but OCR now runs locally in the browser with a cached Tesseract.js worker tuned for digits.
+      </div>
+
+      <div class="note">
+        The first OCR startup downloads the worker/core/language files once. After that, the browser should reuse cached OCR data for faster future runs on the same device.
+      </div>
+
+      <div id="status" class="status">Loading OpenCV...</div>
+
+      <div class="card">
+        <div class="cardTitle">Detected speed</div>
+        <div id="speedEl" class="big">—</div>
+        <div id="speechEl" class="small">No number captured yet.</div>
+      </div>
+
+      <div id="previewWrap">
+        <div class="previewBox">
+          <div class="previewLabel">Sign crop</div>
+          <canvas id="cropPreview" class="preview" width="320" height="320"></canvas>
+        </div>
+        <div class="previewBox">
+          <div class="previewLabel">OCR prep</div>
+          <canvas id="ocrPreview" class="preview" width="320" height="320"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">OCR raw text</div>
+        <div id="ocrTextEl" class="mono">—</div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">Log</div>
+        <div id="logEl" class="mono">—</div>
+      </div>
+    </div>
+  </div>
+
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+  <script type="module">
+    import { createRedRingDetector } from '../traffic-sign/detect.js';
+    import { createVideoSourceController } from '../fake-camera/detect.js';
+
+    const DEBUG_VIDEO_SRC = '../../input/test1.mp4';
+    const STABLE_HITS_REQUIRED = 4;
+    const OCR_MIN_INTERVAL_MS = 1800;
+    const COMMON_SPEEDS = new Set([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]);
+
+    const video = document.getElementById('vid');
+    const outCanvas = document.getElementById('out');
+    const sourceSel = document.getElementById('sourceSel');
+    const camSel = document.getElementById('camSel');
+    const profileSel = document.getElementById('profileSel');
+    const tightSel = document.getElementById('tightSel');
+    const ocrStateEl = document.getElementById('ocrStateEl');
+    const ocrProgressEl = document.getElementById('ocrProgressEl');
+    const cooldownEl = document.getElementById('cooldownEl');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusEl = document.getElementById('status');
+    const speedEl = document.getElementById('speedEl');
+    const speechEl = document.getElementById('speechEl');
+    const ocrTextEl = document.getElementById('ocrTextEl');
+    const logEl = document.getElementById('logEl');
+    const cropPreview = document.getElementById('cropPreview');
+    const ocrPreview = document.getElementById('ocrPreview');
+
+    let detector = null;
+    let running = false;
+    let openCvReady = false;
+    let ocrBusy = false;
+    let ocrWorker = null;
+    let ocrWorkerInitPromise = null;
+    let lastOcrProgress = 'Idle.';
+
+    let lastSeenCenter = null;
+    let lastSeenArea = 0;
+    let stableHits = 0;
+    let lastOcrAt = 0;
+    let lastCapturedNumber = null;
+    let lastCapturedAt = 0;
+
+    const sourceController = createVideoSourceController({
+      video,
+      sourceSelect: sourceSel,
+      cameraSelect: camSel,
+      statusEl,
+      defaultDebugVideoSrc: DEBUG_VIDEO_SRC
+    });
+
+    function setStatus(msg, cls = '') {
+      statusEl.textContent = msg;
+      statusEl.className = `status ${cls}`.trim();
+    }
+
+    function setLog(msg) {
+      logEl.textContent = msg || '—';
+    }
+
+    function setOcrState(msg, cls = '') {
+      ocrStateEl.textContent = msg;
+      ocrStateEl.className = `small ${cls}`.trim();
+    }
+
+    function setOcrProgress(msg, cls = '') {
+      ocrProgressEl.textContent = msg;
+      ocrProgressEl.className = `small ${cls}`.trim();
+    }
+
+    function waitOpenCV() {
+      return new Promise(resolve => {
+        const timer = setInterval(() => {
+          if (window.cv && cv.Mat) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 30);
+      });
+    }
+
+    function waitTesseract() {
+      return new Promise(resolve => {
+        const timer = setInterval(() => {
+          if (window.Tesseract?.createWorker) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 30);
+      });
+    }
+
+    async function ensureOcrWorker() {
+      if (ocrWorker) return ocrWorker;
+      if (ocrWorkerInitPromise) return ocrWorkerInitPromise;
+
+      ocrWorkerInitPromise = (async () => {
+        await waitTesseract();
+
+        const { createWorker } = window.Tesseract;
+        setOcrState('Loading OCR worker...');
+        setOcrProgress('Downloading or opening cached OCR data...');
+
+        const worker = await createWorker('eng', 1, {
+          cacheMethod: 'write',
+          cachePath: 'openadas-traffic-sign-speech-eng-v4',
+          gzip: true,
+          logger: (m) => {
+            const pct = typeof m.progress === 'number'
+              ? `${Math.round(m.progress * 100)}%`
+              : '';
+            lastOcrProgress = [m.status, pct].filter(Boolean).join(' ').trim() || 'Working...';
+            setOcrProgress(lastOcrProgress);
+          },
+          errorHandler: (err) => {
+            console.error('Tesseract worker error:', err);
+          }
+        });
+
+        await worker.setParameters({
+          tessedit_char_whitelist: '0123456789',
+          preserve_interword_spaces: '0',
+          classify_bln_numeric_mode: '1',
+          user_defined_dpi: '300'
+        });
+
+        ocrWorker = worker;
+        lastOcrProgress = 'Ready.';
+        setOcrState('Ready (local cached OCR)', 'ok');
+        setOcrProgress('English OCR data cached in browser for reuse when available.', 'ok');
+        return worker;
+      })().catch(err => {
+        ocrWorkerInitPromise = null;
+        setOcrState(`OCR init failed: ${err.message}`, 'err');
+        setOcrProgress('Check network/CDN access for Tesseract assets.', 'err');
+        throw err;
+      });
+
+      return ocrWorkerInitPromise;
+    }
+
+    function uiConfig() {
+      return {
+        profile: profileSel.value,
+        tightness: tightSel.value
+      };
+    }
+
+    function clearCanvas(canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function resetTrackingState() {
+      lastSeenCenter = null;
+      lastSeenArea = 0;
+      stableHits = 0;
+    }
+
+    function resetCaptureState() {
+      resetTrackingState();
+      lastOcrAt = 0;
+      ocrBusy = false;
+      lastCapturedNumber = null;
+      lastCapturedAt = 0;
+      speedEl.textContent = '—';
+      speechEl.textContent = 'No number captured yet.';
+      ocrTextEl.textContent = '—';
+      setLog('—');
+      clearCanvas(cropPreview);
+      clearCanvas(ocrPreview);
+      setOcrProgress(lastOcrProgress || 'Idle.');
+    }
+
+    function dist(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function clamp(v, a, b) {
+      return Math.max(a, Math.min(b, v));
+    }
+
+    function chooseBestCandidate(stable) {
+      if (!stable?.length) return null;
+      return [...stable].sort((a, b) => {
+        const areaA = a.rect.width * a.rect.height;
+        const areaB = b.rect.width * b.rect.height;
+        return areaB - areaA;
+      })[0];
+    }
+
+    function getCandidateCenter(candidate) {
+      if (typeof candidate.x === 'number' && typeof candidate.y === 'number') {
+        return { x: candidate.x, y: candidate.y };
+      }
+      return {
+        x: candidate.rect.x + candidate.rect.width / 2,
+        y: candidate.rect.y + candidate.rect.height / 2
+      };
+    }
+
+    function drawPreview(canvas, sourceCanvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const scale = Math.min(canvas.width / sourceCanvas.width, canvas.height / sourceCanvas.height);
+      const dw = sourceCanvas.width * scale;
+      const dh = sourceCanvas.height * scale;
+      const dx = (canvas.width - dw) / 2;
+      const dy = (canvas.height - dh) / 2;
+      ctx.drawImage(sourceCanvas, dx, dy, dw, dh);
+    }
+
+    function snapshotFullFrame() {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      c.getContext('2d').drawImage(video, 0, 0, w, h);
+      return c;
+    }
+
+    function cropSquareFromRect(frameCanvas, rect, padScale = 0.08) {
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      const half = (Math.max(rect.width, rect.height) * (1 + padScale)) / 2;
+
+      const x = clamp(Math.round(cx - half), 0, frameCanvas.width - 1);
+      const y = clamp(Math.round(cy - half), 0, frameCanvas.height - 1);
+      const x2 = clamp(Math.round(cx + half), 1, frameCanvas.width);
+      const y2 = clamp(Math.round(cy + half), 1, frameCanvas.height);
+
+      const side = Math.max(2, Math.min(x2 - x, y2 - y));
+      const c = document.createElement('canvas');
+      c.width = side;
+      c.height = side;
+      c.getContext('2d').drawImage(frameCanvas, x, y, side, side, 0, 0, side, side);
+      return c;
+    }
+
+    function getRedHsvBounds(tightness = 'med') {
+      const table = {
+        loose: {
+          low1: [0, 60, 50, 0],
+          high1: [12, 255, 255, 255],
+          low2: [168, 60, 50, 0],
+          high2: [180, 255, 255, 255]
+        },
+        med: {
+          low1: [0, 85, 60, 0],
+          high1: [10, 255, 255, 255],
+          low2: [170, 85, 60, 0],
+          high2: [180, 255, 255, 255]
+        },
+        tight: {
+          low1: [0, 105, 70, 0],
+          high1: [8, 255, 255, 255],
+          low2: [172, 105, 70, 0],
+          high2: [180, 255, 255, 255]
+        },
+        ultra: {
+          low1: [0, 120, 85, 0],
+          high1: [6, 255, 255, 255],
+          low2: [174, 120, 85, 0],
+          high2: [180, 255, 255, 255]
+        }
+      };
+      return table[tightness] || table.med;
+    }
+
+    function locateRingOnCanvas(signCanvas, cfg = { tightness: 'med' }) {
+      const fallback = {
+        cx: signCanvas.width / 2,
+        cy: signCanvas.height / 2,
+        radius: Math.min(signCanvas.width, signCanvas.height) * 0.42
+      };
+
+      if (!window.cv || !cv.Mat) return fallback;
+
+      let src = null;
+      let rgb = null;
+      let hsv = null;
+      let mask1 = null;
+      let mask2 = null;
+      let redMask = null;
+      let kernel = null;
+      let contours = null;
+      let hierarchy = null;
+      let low1 = null;
+      let high1 = null;
+      let low2 = null;
+      let high2 = null;
+
+      try {
+        src = cv.imread(signCanvas);
+        rgb = new cv.Mat();
+        hsv = new cv.Mat();
+        cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB);
+        cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+
+        const bounds = getRedHsvBounds(cfg.tightness);
+        low1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), bounds.low1);
+        high1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), bounds.high1);
+        low2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), bounds.low2);
+        high2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), bounds.high2);
+
+        mask1 = new cv.Mat();
+        mask2 = new cv.Mat();
+        redMask = new cv.Mat();
+        cv.inRange(hsv, low1, high1, mask1);
+        cv.inRange(hsv, low2, high2, mask2);
+        cv.bitwise_or(mask1, mask2, redMask);
+
+        kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+        cv.morphologyEx(redMask, redMask, cv.MORPH_CLOSE, kernel);
+        cv.morphologyEx(redMask, redMask, cv.MORPH_OPEN, kernel);
+
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cv.findContours(redMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let bestArea = 0;
+        let bestCircle = null;
+        for (let i = 0; i < contours.size(); i++) {
+          const cnt = contours.get(i);
+          const area = cv.contourArea(cnt);
+          if (area > bestArea) {
+            bestArea = area;
+            bestCircle = cv.minEnclosingCircle(cnt);
+          }
+          cnt.delete();
+        }
+
+        if (bestCircle && bestArea > 300) {
+          return {
+            cx: bestCircle.center.x,
+            cy: bestCircle.center.y,
+            radius: bestCircle.radius
+          };
+        }
+
+        return fallback;
+      } catch (err) {
+        console.warn('Ring localization failed, using fallback.', err);
+        return fallback;
+      } finally {
+        src?.delete?.();
+        rgb?.delete?.();
+        hsv?.delete?.();
+        mask1?.delete?.();
+        mask2?.delete?.();
+        redMask?.delete?.();
+        kernel?.delete?.();
+        contours?.delete?.();
+        hierarchy?.delete?.();
+        low1?.delete?.();
+        high1?.delete?.();
+        low2?.delete?.();
+        high2?.delete?.();
+      }
+    }
+    function centeredSquareRect(w, h, cx, cy, side) {
+      side = Math.max(2, Math.min(Math.round(side), Math.min(w, h)));
+
+      let x = Math.round(cx - side / 2);
+      let y = Math.round(cy - side / 2);
+
+      x = clamp(x, 0, Math.max(0, w - side));
+      y = clamp(y, 0, Math.max(0, h - side));
+
+      return { x, y, size: side };
+    }
+
+    function extractCircleSquare(signCanvas, cfg = { tightness: 'med' }, circleScale = 0.74, outSize = 520) {
+      const ring = locateRingOnCanvas(signCanvas, cfg);
+      const halfSide = Math.max(18, ring.radius * circleScale);
+      const box = centeredSquareRect(
+        signCanvas.width,
+        signCanvas.height,
+        ring.cx,
+        ring.cy,
+        halfSide * 2
+      );
+
+      const out = document.createElement('canvas');
+      out.width = outSize;
+      out.height = outSize;
+      const ctx = out.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(
+        signCanvas,
+        box.x, box.y, box.size, box.size,
+        0, 0, out.width, out.height
+      );
+      return out;
+    }
+
+    function makeWhiteCanvas(size = 640) {
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, size, size);
+      return c;
+    }
+
+    function cloneCanvas(source) {
+      const c = document.createElement('canvas');
+      c.width = source.width;
+      c.height = source.height;
+      c.getContext('2d').drawImage(source, 0, 0);
+      return c;
+    }
+
+    function grayCanvasFromCanvas(sourceCanvas) {
+      const out = cloneCanvas(sourceCanvas);
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      const img = ctx.getImageData(0, 0, out.width, out.height);
+      const data = img.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const l = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        data[i] = l;
+        data[i + 1] = l;
+        data[i + 2] = l;
+        data[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return out;
+    }
+
+    function fitSourceIntoCanvas(sourceCanvas, outSize = 640, padX = 70, padY = 84, smoothing = true) {
+      const out = makeWhiteCanvas(outSize);
+      const ctx = out.getContext('2d');
+      const availW = Math.max(8, out.width - padX * 2);
+      const availH = Math.max(8, out.height - padY * 2);
+      const scale = Math.min(availW / sourceCanvas.width, availH / sourceCanvas.height);
+      const dw = Math.max(2, Math.round(sourceCanvas.width * scale));
+      const dh = Math.max(2, Math.round(sourceCanvas.height * scale));
+      const dx = Math.round((out.width - dw) / 2);
+      const dy = Math.round((out.height - dh) / 2);
+      ctx.imageSmoothingEnabled = !!smoothing;
+      ctx.imageSmoothingQuality = smoothing ? 'high' : 'medium';
+      ctx.drawImage(sourceCanvas, dx, dy, dw, dh);
+      return out;
+    }
+
+    function matToFittedCanvas(mat, { outSize = 640, padX = 70, padY = 84, invert = false, smoothing = true } = {}) {
+      const tmp = document.createElement('canvas');
+      tmp.width = mat.cols;
+      tmp.height = mat.rows;
+      if (invert) {
+        const inv = new cv.Mat();
+        cv.bitwise_not(mat, inv);
+        cv.imshow(tmp, inv);
+        inv.delete();
+      } else {
+        cv.imshow(tmp, mat);
+      }
+      return fitSourceIntoCanvas(tmp, outSize, padX, padY, smoothing);
+    }
+
+    function rectFromBoxes(boxes) {
+      if (!boxes?.length) return null;
+      let x1 = boxes[0].x;
+      let y1 = boxes[0].y;
+      let x2 = boxes[0].x + boxes[0].width;
+      let y2 = boxes[0].y + boxes[0].height;
+      for (let i = 1; i < boxes.length; i++) {
+        const b = boxes[i];
+        x1 = Math.min(x1, b.x);
+        y1 = Math.min(y1, b.y);
+        x2 = Math.max(x2, b.x + b.width);
+        y2 = Math.max(y2, b.y + b.height);
+      }
+      return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+    }
+
+    function expandRect(rect, mx, my, maxW, maxH) {
+      const x = clamp(rect.x - mx, 0, Math.max(0, maxW - 1));
+      const y = clamp(rect.y - my, 0, Math.max(0, maxH - 1));
+      const x2 = clamp(rect.x + rect.width + mx, 1, maxW);
+      const y2 = clamp(rect.y + rect.height + my, 1, maxH);
+      return {
+        x,
+        y,
+        width: Math.max(2, x2 - x),
+        height: Math.max(2, y2 - y)
+      };
+    }
+
+    function pickBestDigitGroup(boxes, w) {
+      if (!boxes?.length) return [];
+      const sorted = [...boxes].sort((a, b) => a.x - b.x);
+      if (sorted.length <= 3) return sorted;
+
+      let bestGroup = [sorted[0]];
+      let bestScore = -Infinity;
+      for (let len = 3; len >= 1; len--) {
+        for (let i = 0; i + len <= sorted.length; i++) {
+          const group = sorted.slice(i, i + len);
+          const union = rectFromBoxes(group);
+          const gapPenalty = group.slice(1).reduce((sum, b, idx) => {
+            const prev = group[idx];
+            const gap = Math.max(0, b.x - (prev.x + prev.width));
+            return sum + gap;
+          }, 0);
+          const totalHeight = group.reduce((sum, b) => sum + b.height, 0);
+          const center = union.x + union.width / 2;
+          const centerPenalty = Math.abs(center - w / 2);
+          const score = totalHeight * 3 + len * 120 - gapPenalty * 1.7 - centerPenalty * 0.6 - union.width * 0.12;
+          if (score > bestScore) {
+            bestScore = score;
+            bestGroup = group;
+          }
+        }
+      }
+      return bestGroup;
+    }
+
+    function extractBoxesFromBinary(binMat, innerRadius) {
+      const w = binMat.cols;
+      const h = binMat.rows;
+      const centerX = w / 2;
+      const centerY = h / 2;
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
+      const candidates = [];
+      try {
+        cv.findContours(binMat, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        for (let i = 0; i < contours.size(); i++) {
+          const cnt = contours.get(i);
+          const rect = cv.boundingRect(cnt);
+          cnt.delete();
+
+          const area = rect.width * rect.height;
+          const aspect = rect.width / Math.max(1, rect.height);
+          const cx = rect.x + rect.width / 2;
+          const cy = rect.y + rect.height / 2;
+          const centerDist = Math.hypot(cx - centerX, cy - centerY);
+          const touchesEdge = rect.x <= 5 || rect.y <= 5 || rect.x + rect.width >= w - 5 || rect.y + rect.height >= h - 5;
+          const tooSmall = area < (w * h * 0.0012);
+          const tooLarge = area > (w * h * 0.20);
+          const tooShort = rect.height < h * 0.24;
+          const tooTall = rect.height > h * 0.92;
+          const tooNarrow = rect.width < w * 0.025;
+          const tooWide = rect.width > w * 0.42;
+          const badAspect = aspect < 0.06 || aspect > 1.25;
+          const farFromCenter = centerDist > innerRadius * 0.86;
+          if (touchesEdge || tooSmall || tooLarge || tooShort || tooTall || tooNarrow || tooWide || badAspect || farFromCenter) continue;
+          candidates.push(rect);
+        }
+      } finally {
+        contours.delete();
+        hierarchy.delete();
+      }
+
+      const selected = pickBestDigitGroup(candidates, w).sort((a, b) => a.x - b.x);
+      return {
+        candidates,
+        boxes: selected,
+        union: selected.length ? rectFromBoxes(selected) : null
+      };
+    }
+
+    function roiMatToCanvas(mat, rect, opts = {}) {
+      const roi = mat.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
+      try {
+        return matToFittedCanvas(roi, opts);
+      } finally {
+        roi.delete();
+      }
+    }
+
+    function buildDigitOcrPasses(signCanvas, cfg = { tightness: 'med' }) {
+      const fullSignSquare = extractCircleSquare(signCanvas, cfg, 1.08, 640);
+      const innerSquare = extractCircleSquare(signCanvas, cfg, 0.74, 640);
+      const fullSignColor = fitSourceIntoCanvas(fullSignSquare, 640, 56, 56, true);
+      const fullSignGray = fitSourceIntoCanvas(grayCanvasFromCanvas(fullSignSquare), 640, 56, 56, true);
+      const innerGrayFallback = fitSourceIntoCanvas(grayCanvasFromCanvas(innerSquare), 640, 76, 86, true);
+
+      if (!window.cv || !cv.Mat) {
+        return {
+          previewCanvas: fullSignColor,
+          segmentedDigits: [],
+          passes: [
+            {
+              label: 'full-sign-color',
+              canvas: fullSignColor,
+              psm: window.Tesseract?.PSM?.SINGLE_WORD,
+              note: 'default full sign square with red ring kept',
+              priority: 10
+            },
+            {
+              label: 'full-sign-gray',
+              canvas: fullSignGray,
+              psm: window.Tesseract?.PSM?.SINGLE_WORD,
+              note: 'full sign square grayscale fallback',
+              priority: 12
+            },
+            {
+              label: 'tight-digit-gray',
+              canvas: innerGrayFallback,
+              psm: window.Tesseract?.PSM?.SINGLE_LINE,
+              note: 'tight inner grayscale fallback',
+              priority: 18
+            }
+          ]
+        };
+      }
+
+      let src = null;
+      let gray = null;
+      let blur = null;
+      let eq = null;
+      let innerMask = null;
+      let discGray = null;
+      let whiteBg = null;
+      let binOtsu = null;
+      let binAdaptive = null;
+      let kernel2 = null;
+      let kernel3 = null;
+
+      try {
+        src = cv.imread(innerSquare);
+        gray = new cv.Mat();
+        blur = new cv.Mat();
+        eq = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+        cv.equalizeHist(blur, eq);
+
+        const w = eq.cols;
+        const h = eq.rows;
+        const innerRadius = Math.round(Math.min(w, h) * 0.41);
+        innerMask = new cv.Mat.zeros(h, w, cv.CV_8UC1);
+        cv.circle(innerMask, new cv.Point(Math.round(w / 2), Math.round(h / 2)), innerRadius, new cv.Scalar(255), -1);
+
+        whiteBg = new cv.Mat(h, w, cv.CV_8UC1, new cv.Scalar(255));
+        discGray = new cv.Mat();
+        whiteBg.copyTo(discGray);
+        eq.copyTo(discGray, innerMask);
+
+        binOtsu = new cv.Mat();
+        cv.threshold(eq, binOtsu, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+        cv.bitwise_and(binOtsu, innerMask, binOtsu);
+
+        binAdaptive = new cv.Mat();
+        cv.adaptiveThreshold(eq, binAdaptive, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 10);
+        cv.bitwise_and(binAdaptive, innerMask, binAdaptive);
+
+        kernel2 = cv.Mat.ones(2, 2, cv.CV_8U);
+        kernel3 = cv.Mat.ones(3, 3, cv.CV_8U);
+        for (const mat of [binOtsu, binAdaptive]) {
+          cv.morphologyEx(mat, mat, cv.MORPH_OPEN, kernel2);
+          cv.morphologyEx(mat, mat, cv.MORPH_CLOSE, kernel3);
+        }
+
+        const analyses = [
+          { label: 'otsu', bin: binOtsu, data: extractBoxesFromBinary(binOtsu, innerRadius) },
+          { label: 'adaptive', bin: binAdaptive, data: extractBoxesFromBinary(binAdaptive, innerRadius) }
+        ];
+
+        const validAnalyses = analyses.filter(entry => {
+          const boxes = entry?.data?.boxes || [];
+          return boxes.length >= 2 && boxes.length <= 3 && entry?.data?.union;
+        });
+
+        const scoreAnalysis = (entry) => {
+          const boxes = entry.data.boxes || [];
+          const union = entry.data.union;
+          if (!union) return -99999;
+          const totalHeight = boxes.reduce((sum, b) => sum + b.height, 0);
+          const totalWidth = boxes.reduce((sum, b) => sum + b.width, 0);
+          const centerPenalty = Math.abs((union.x + union.width / 2) - w / 2);
+          const countBonus = boxes.length === 3 ? 180 : 220;
+          return totalHeight * 2.6 + totalWidth * 0.4 + countBonus - centerPenalty * 1.2;
+        };
+
+        validAnalyses.sort((a, b) => scoreAnalysis(b) - scoreAnalysis(a));
+        const bestAnalysis = validAnalyses[0] || analyses[0];
+        const fallbackRect = {
+          x: Math.round(w * 0.20),
+          y: Math.round(h * 0.16),
+          width: Math.round(w * 0.60),
+          height: Math.round(h * 0.68)
+        };
+        const rawRect = validAnalyses.length
+          ? expandRect(
+              bestAnalysis.data.union,
+              Math.round(bestAnalysis.data.union.width * 0.18),
+              Math.round(bestAnalysis.data.union.height * 0.14),
+              w,
+              h
+            )
+          : fallbackRect;
+
+        const tightGray = roiMatToCanvas(discGray, rawRect, { outSize: 640, padX: 70, padY: 88, smoothing: true });
+        const tightBinary = roiMatToCanvas(bestAnalysis.bin, rawRect, { outSize: 640, padX: 70, padY: 88, invert: true, smoothing: true });
+
+        return {
+          previewCanvas: fullSignColor,
+          segmentedDigits: [],
+          passes: [
+            {
+              label: 'full-sign-color',
+              canvas: fullSignColor,
+              psm: window.Tesseract.PSM.SINGLE_WORD,
+              note: 'default full sign square with red ring kept',
+              priority: 10
+            },
+            {
+              label: 'full-sign-gray',
+              canvas: fullSignGray,
+              psm: window.Tesseract.PSM.SINGLE_WORD,
+              note: 'full sign square grayscale',
+              priority: 12
+            },
+            {
+              label: 'tight-digit-gray',
+              canvas: tightGray,
+              psm: window.Tesseract.PSM.SINGLE_LINE,
+              note: 'tight digit grayscale crop',
+              priority: 18
+            },
+            {
+              label: 'tight-digit-binary',
+              canvas: tightBinary,
+              psm: window.Tesseract.PSM.SINGLE_LINE,
+              note: 'tight digit binary crop',
+              priority: 16
+            }
+          ]
+        };
+      } catch (err) {
+        console.warn('buildDigitOcrPasses failed, falling back.', err);
+        return {
+          previewCanvas: fullSignColor,
+          segmentedDigits: [],
+          passes: [
+            {
+              label: 'full-sign-color',
+              canvas: fullSignColor,
+              psm: window.Tesseract?.PSM?.SINGLE_WORD,
+              note: 'default full sign square fallback after prep error',
+              priority: 10
+            },
+            {
+              label: 'full-sign-gray',
+              canvas: fullSignGray,
+              psm: window.Tesseract?.PSM?.SINGLE_WORD,
+              note: 'full sign gray fallback after prep error',
+              priority: 12
+            },
+            {
+              label: 'tight-digit-gray',
+              canvas: innerGrayFallback,
+              psm: window.Tesseract?.PSM?.SINGLE_LINE,
+              note: 'tight inner grayscale fallback after prep error',
+              priority: 18
+            }
+          ]
+        };
+      } finally {
+        src?.delete?.();
+        gray?.delete?.();
+        blur?.delete?.();
+        eq?.delete?.();
+        innerMask?.delete?.();
+        discGray?.delete?.();
+        whiteBg?.delete?.();
+        binOtsu?.delete?.();
+        binAdaptive?.delete?.();
+        kernel2?.delete?.();
+        kernel3?.delete?.();
+      }
+    }
+
+    function canvasToBlob(canvas, type = 'image/png', quality = 0.92) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Failed to build OCR blob'));
+        }, type, quality);
+      });
+    }
+
+    function summarizeTesseractResult(result, passLabel, psm) {
+      const confidence = Number(result?.data?.confidence);
+      return {
+        pass: passLabel,
+        psm,
+        text: String(result?.data?.text || '').trim(),
+        confidence: Number.isFinite(confidence) ? Math.round(confidence) : null
+      };
+    }
+
+    async function runLocalTesseractOcr(ocrCanvas, passLabel = 'ocr', psm = window.Tesseract?.PSM?.SINGLE_WORD) {
+      const worker = await ensureOcrWorker();
+      setOcrState('Recognizing digits locally...', 'ok');
+      if (typeof psm === 'number') {
+        await worker.setParameters({ tessedit_pageseg_mode: psm });
+      }
+
+      const result = await worker.recognize(ocrCanvas);
+      const summary = summarizeTesseractResult(result, passLabel, psm);
+
+      lastOcrProgress = `Recognized via ${passLabel}${summary.confidence == null ? '' : ` (confidence ${summary.confidence})`}.`;
+      setOcrProgress(lastOcrProgress, 'ok');
+
+      return {
+        text: summary.text,
+        raw: summary
+      };
+    }
+
+    async function runSegmentedDigitOcr(segmentedDigits) {
+      if (!segmentedDigits?.length) return null;
+      const parts = [];
+      const details = [];
+      for (const seg of segmentedDigits) {
+        const res = await runLocalTesseractOcr(seg.canvas, `${seg.label}-char`, window.Tesseract.PSM.SINGLE_CHAR);
+        const norm = normalizeOcrText(res.text).replace(/\s+/g, '');
+        const digit = (norm.match(/\d/) || [])[0] || '';
+        parts.push(digit);
+        details.push({ label: seg.label, text: res.text, digit, raw: res.raw });
+      }
+      const text = parts.join('');
+      return {
+        text,
+        raw: {
+          mode: 'segmented-single-char',
+          pieces: details
+        }
+      };
+    }
+
+    function normalizeOcrText(text) {
+      return String(text || '')
+        .toUpperCase()
+        .replace(/[OQD]/g, '0')
+        .replace(/[IL|]/g, '1')
+        .replace(/S/g, '5')
+        .replace(/B/g, '8')
+        .replace(/Z/g, '2')
+        .replace(/[^0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function extractSpeedNumbers(text) {
+      const norm = normalizeOcrText(text);
+      const found = new Set();
+      const add = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return;
+        if (!COMMON_SPEEDS.has(n)) return;
+        found.add(n);
+      };
+
+      for (const m of norm.matchAll(/\b(\d{2,3})\b/g)) add(m[1]);
+
+      const collapsed = norm.replace(/\D/g, '');
+      if (/^\d{2,3}$/.test(collapsed)) add(collapsed);
+
+      return [...found];
+    }
+
+    function chooseBestOcrAttempt(attempts) {
+      let best = null;
+
+      for (const attempt of attempts) {
+        const numbers = extractSpeedNumbers(attempt.text);
+        if (!numbers.length) continue;
+
+        const norm = normalizeOcrText(attempt.text);
+        const collapsed = norm.replace(/\D/g, '');
+        const cleanish = /^\s*[0-9OQDIL|SBZ\s]{2,5}\s*$/.test(attempt.text || '');
+        const confidence = Number(attempt?.raw?.confidence);
+
+        for (const number of numbers) {
+          let score = Number(attempt?.pass?.priority || 0);
+          if (number % 10 === 0) score += 24;
+          if (COMMON_SPEEDS.has(number)) score += 26;
+          if (collapsed === String(number)) score += 20;
+          if (cleanish) score += 8;
+          if (String(number).length === 3) score += 4;
+          if (Number.isFinite(confidence)) score += Math.min(24, confidence / 3);
+
+          if (!best || score > best.score) {
+            best = {
+              ...attempt,
+              number,
+              score
+            };
+          }
+        }
+      }
+
+      return best;
+    }
+
+    function pingDetectedNumber(number, rawText) {
+      const nowIso = new Date().toISOString();
+      speedEl.textContent = `${number}`;
+      speechEl.textContent = `Last captured number: ${number}`;
+      setLog(`[${nowIso}] Captured number: ${number}\nOCR text: ${rawText || '—'}`);
+      console.log('Captured traffic sign number:', number, { rawText });
+
+      window.dispatchEvent(new CustomEvent('traffic-sign-number', {
+        detail: {
+          number,
+          rawText,
+          capturedAt: nowIso
+        }
+      }));
+    }
+
+    async function maybeOcrAndPing(candidate) {
+      if (!running || ocrBusy || !candidate) return;
+
+      const now = Date.now();
+      if (now - lastOcrAt < OCR_MIN_INTERVAL_MS) return;
+
+      const cooldown = Math.max(1000, Number(cooldownEl.value) || 8000);
+      if (lastCapturedAt && now - lastCapturedAt < cooldown) return;
+
+      const center = getCandidateCenter(candidate);
+      const area = candidate.rect.width * candidate.rect.height;
+      const movedTooFar = !lastSeenCenter || dist(lastSeenCenter, center) > 42;
+      const areaChangedTooMuch = lastSeenArea > 0 && Math.abs(area - lastSeenArea) / lastSeenArea > 0.55;
+
+      if (movedTooFar || areaChangedTooMuch) {
+        stableHits = 1;
+        lastSeenCenter = center;
+        lastSeenArea = area;
+        return;
+      }
+
+      stableHits += 1;
+      lastSeenCenter = center;
+      lastSeenArea = area;
+
+      if (stableHits < STABLE_HITS_REQUIRED) return;
+
+      ocrBusy = true;
+      lastOcrAt = now;
+
+      try {
+        const fullFrame = snapshotFullFrame();
+
+        // slightly larger first crop so ring localization has room
+        const signCanvas = cropSquareFromRect(fullFrame, candidate.rect, 0.22);
+        const prep = buildDigitOcrPasses(signCanvas, uiConfig());
+        const passes = prep.passes || [];
+
+        drawPreview(cropPreview, signCanvas);
+        if (prep.previewCanvas) drawPreview(ocrPreview, prep.previewCanvas);
+
+        const attempts = [];
+
+        for (const pass of passes) {
+          drawPreview(ocrPreview, pass.canvas);
+          setStatus(`Stable sign captured. Running local OCR (${pass.label})...`);
+          const ocr = await runLocalTesseractOcr(pass.canvas, pass.label, pass.psm);
+          attempts.push({
+            pass,
+            text: ocr.text,
+            raw: ocr.raw
+          });
+        }
+
+        const bestAttempt = chooseBestOcrAttempt(attempts);
+        if (!bestAttempt) {
+          const lastAttempt = attempts[attempts.length - 1] || { text: '', raw: null };
+          ocrTextEl.textContent = lastAttempt.text || 'No OCR text';
+          setLog(`OCR attempts: ${JSON.stringify(attempts.map(a => ({ pass: a.pass.label, text: a.text, confidence: a.raw?.confidence }))).slice(0, 900)}`);
+          setStatus('OCR finished, but no valid speed number was found.', 'err');
+          setOcrProgress('Tried the full square sign first, then a tighter digit crop.', 'err');
+          return;
+        }
+
+        const number = bestAttempt.number;
+        drawPreview(ocrPreview, bestAttempt.pass.canvas);
+        ocrTextEl.textContent = bestAttempt.text || 'No OCR text';
+        setLog(`Best OCR: ${JSON.stringify({ pass: bestAttempt.pass.label, text: bestAttempt.text, confidence: bestAttempt.raw?.confidence, number }).slice(0, 900)}
+All attempts: ${JSON.stringify(attempts.map(a => ({ pass: a.pass.label, text: a.text, confidence: a.raw?.confidence }))).slice(0, 900)}`);
+
+        if (lastCapturedNumber === number && lastCapturedAt && now - lastCapturedAt < cooldown) {
+          setStatus(`Same number ${number} ignored during cooldown.`, 'ok');
+          return;
+        }
+
+        pingDetectedNumber(number, bestAttempt.text);
+        lastCapturedNumber = number;
+        lastCapturedAt = Date.now();
+        setStatus(`Captured number: ${number}`, 'ok');
+      } catch (error) {
+        setStatus(`Capture mode error: ${error.message}`, 'err');
+        setLog(error.stack || error.message);
+      } finally {
+        ocrBusy = false;
+      }
+    }
+
+    function buildDetector() {
+      detector?.stop?.();
+
+      detector = createRedRingDetector({
+        video,
+        outputCanvas: outCanvas,
+        getUIConfig: uiConfig,
+        onStatus: (msg) => {
+          if (!ocrBusy && running) setStatus(msg);
+        }
+      });
+
+      detector.onStable = (stable) => {
+        if (!stable?.length) {
+          resetTrackingState();
+          return;
+        }
+
+        const best = chooseBestCandidate(stable);
+        maybeOcrAndPing(best).catch(error => {
+          setStatus(`onStable error: ${error.message}`, 'err');
+          setLog(error.stack || error.message);
+        });
+      };
+    }
+
+    async function ensureSourceLoaded() {
+      await sourceController.applySelectedSource();
+      camSel.disabled = sourceSel.value === 'file';
+    }
+
+    async function startMode() {
+      if (!openCvReady) {
+        setStatus('Loading OpenCV...');
+        await waitOpenCV();
+        openCvReady = true;
+      }
+
+      resetCaptureState();
+      setStatus('Loading OCR engine...');
+      await ensureOcrWorker();
+      await ensureSourceLoaded();
+      buildDetector();
+      running = true;
+      detector.start();
+      setStatus('Detector running. Waiting for a stable ring sign...');
+    }
+
+    async function stopMode() {
+      detector?.stop?.();
+      detector = null;
+      running = false;
+      ocrBusy = false;
+      resetTrackingState();
+      await sourceController.stopCurrentSource();
+      setStatus('Stopped.');
+    }
+
+    async function restartIfRunning() {
+      if (!running) return;
+      detector?.stop?.();
+      detector = null;
+      running = false;
+      ocrBusy = false;
+      resetTrackingState();
+
+      await ensureSourceLoaded();
+      buildDetector();
+      running = true;
+      detector.start();
+      setStatus('Detector running. Waiting for a stable ring sign...');
+    }
+
+    sourceSel.onchange = async () => {
+      camSel.disabled = sourceSel.value === 'file';
+      if (running) {
+        try {
+          await restartIfRunning();
+        } catch (error) {
+          setStatus(`Source change error: ${error.message}`, 'err');
+        }
+      } else {
+        setStatus(
+          sourceSel.value === 'file'
+            ? 'Debug video selected. Press Start.'
+            : 'Camera selected. Press Start.'
+        );
+      }
+    };
+
+    camSel.onchange = async () => {
+      if (sourceSel.value !== 'camera') return;
+      if (running) {
+        try {
+          await restartIfRunning();
+        } catch (error) {
+          setStatus(`Camera change error: ${error.message}`, 'err');
+        }
+      }
+    };
+
+    profileSel.onchange = () => {
+      if (!running) setStatus('Profile updated. Press Start.');
+    };
+
+    tightSel.onchange = () => {
+      if (!running) setStatus('HSV tightness updated. Press Start.');
+    };
+
+    startBtn.onclick = async () => {
+      try {
+        await startMode();
+      } catch (error) {
+        setStatus(`Start error: ${error.message}`, 'err');
+      }
+    };
+
+    stopBtn.onclick = async () => {
+      try {
+        await stopMode();
+      } catch (error) {
+        setStatus(`Stop error: ${error.message}`, 'err');
+      }
+    };
+
+    window.addEventListener('beforeunload', () => {
+      ocrWorker?.terminate?.().catch?.(() => {});
+    });
+
+    (async () => {
+      clearCanvas(cropPreview);
+      clearCanvas(ocrPreview);
+      setStatus('Loading OpenCV...');
+      setOcrState('Waiting to load.');
+      setOcrProgress('Press Start to initialize cached local OCR.');
+      await Promise.all([
+        sourceController.listCameras().catch(() => []),
+        waitOpenCV(),
+        waitTesseract()
+      ]);
+      openCvReady = true;
+      camSel.disabled = sourceSel.value === 'file';
+      setStatus('Ready. Press Start.');
+    })();
+  </script>
+</body>
+</html>

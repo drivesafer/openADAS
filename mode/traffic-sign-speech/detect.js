@@ -1,0 +1,1 @@
+export { createRedRingDetector } from '../traffic-sign/detect.js';
