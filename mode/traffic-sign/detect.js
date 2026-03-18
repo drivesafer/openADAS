@@ -5,7 +5,7 @@
 export function createRedRingDetector({
   video,
   outputCanvas,
-  getUIConfig = () => ({ profile: "day", tightness: "med" }),
+  getUIConfig = () => ({ profile: "auto", tightness: "med" }),
   onStatus = () => {},
   debug = true,
   debugEveryMs = 800
@@ -159,6 +159,11 @@ export function createRedRingDetector({
     }
 
     return { l: sumL / n, s: sumS / n, v: sumV / n };
+  }
+
+  function effectiveProfile(ui, stats) {
+    if (ui.profile && ui.profile !== 'auto') return ui.profile;
+    return stats.l >= 110 ? 'day' : 'night';
   }
 
   function adaptive(stats, profile, tightness) {
@@ -351,7 +356,8 @@ export function createRedRingDetector({
 
       const ui = getUIConfig();
       const stats = frameStats();
-      const thr = adaptive(stats, ui.profile, ui.tightness);
+      const profile = effectiveProfile(ui, stats);
+      const thr = adaptive(stats, profile, ui.tightness);
 
       const low1  = cv.matFromArray(1, 3, cv.CV_8U, [thr.h1[0], thr.sMin, thr.vMin]);
       const high1 = cv.matFromArray(1, 3, cv.CV_8U, [thr.h1[1], 255, 255]);
