@@ -7,10 +7,26 @@ export function createRedRingDetector({
   outputCanvas,
   getUIConfig = () => ({ profile: "day", tightness: "med" }),
   onStatus = () => {},
-  debug = true,              // ✅ turn on logs
-  debugEveryMs = 800         // ✅ throttle log frequency
+  debug = false,             // enable debug logs (set to false in production)
+  debugEveryMs = 800,        // max log frequency in ms
+  // Performance tuning parameters:
+  // frameSkip: how many frames to skip between full OpenCV passes.
+  //   0 = process every frame
+  //   1 = process every 2nd frame
+  //   2 = process every 3rd frame, ...
+  frameSkip = 1,
+  // statsEveryN: how often to recompute global frame statistics.
+  //   1 = every processed frame
+  //   2 = every 2 processed frames (reuse previous stats in between), etc.
+  statsEveryN = 2
 }) {
-  // --- Persistence ---
+  // --- ROI (Region Of Interest) configuration based on relative height ---
+  // ROI_TOP_FRACTION: where to start scanning (0 = from very top, 0.25 = start from 1/4 down)
+  // ROI_HEIGHT_FRACTION: height of scan region (0.7 = 70% of frame height)
+  const ROI_TOP_FRACTION = 0.0;
+  const ROI_HEIGHT_FRACTION = 0.7;
+
+  // --- Persistence (temporal smoothing over frames) ---
   const hist = [];
   const MAX_HISTORY = 6;
   const MIN_OCCURRENCE = 3;
@@ -67,6 +83,11 @@ export function createRedRingDetector({
   };
 
   const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+
+  // --- Frame-level performance counters ---
+  let frameCounter = 0;
+  let statsCounter = 0;
+  let cachedStats = null;
 
   function free() {
     [src,dst,rgb,hsv,mask1,mask2,mask,contours,hierarchy].forEach(m=>{
@@ -285,6 +306,15 @@ export function createRedRingDetector({
     if (!running) return;
 
     try {
+      // Optionally skip some frames to reduce CPU load.
+      // This keeps UI smooth (requestAnimationFrame still runs),
+      // but full OpenCV processing only happens on every (frameSkip + 1)-th frame.
+      frameCounter++;
+      if (frameSkip > 0 && (frameCounter % (frameSkip + 1) !== 0)) {
+        requestAnimationFrame(loop);
+        return;
+      }
+
       // ✅ must match video attr size
       if (!ensureSizeMatch()) {
         requestAnimationFrame(loop);
@@ -292,24 +322,46 @@ export function createRedRingDetector({
       }
 
       logSize("before cap.read()");
-      cap.read(src);                // <-- where size mismatch typically throws
+      cap.read(src);
       src.copyTo(dst);
 
-      // HSV
-      cv.GaussianBlur(src, src, new cv.Size(7,7), 0, 0, cv.BORDER_DEFAULT);
-      cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB);
-      cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+      // --- Calculate ROI by rates ---
+      const topFrac = clamp(ROI_TOP_FRACTION, 0, 0.9);
+      const hFrac = clamp(ROI_HEIGHT_FRACTION, 0.1, 1.0);
+      const roiY = Math.round(H * topFrac);
+      const roiH = Math.round(H * hFrac);
+      const safeRoiH = Math.min(roiH, H - roiY);
+      const roiRect = new cv.Rect(0, roiY, W, safeRoiH);
+
+      // Create view ROI (Don't copy the data)
+      const srcROI = src.roi(roiRect);
+      const dstROI = dst.roi(roiRect);
+      const rgbROI = rgb.roi(roiRect);
+      const hsvROI = hsv.roi(roiRect);
+
+      // HSV on ROI
+      cv.GaussianBlur(srcROI, srcROI, new cv.Size(7,7), 0, 0, cv.BORDER_DEFAULT);
+      cv.cvtColor(srcROI, rgbROI, cv.COLOR_RGBA2RGB);
+      cv.cvtColor(rgbROI, hsvROI, cv.COLOR_RGB2HSV);
 
       const ui = getUIConfig();
-      const stats = frameStats();
+
+      // Recompute global frame statistics only every statsEveryN processed frames
+      // to save work on low-end devices.
+      statsCounter++;
+      if (!cachedStats || statsCounter >= Math.max(1, statsEveryN)) {
+        cachedStats = frameStats();
+        statsCounter = 0;
+      }
+      const stats = cachedStats;
       const thr = adaptive(stats, ui.profile, ui.tightness);
 
       const low1  = cv.matFromArray(1,3,cv.CV_8U,[thr.h1[0],thr.sMin,thr.vMin]);
       const high1 = cv.matFromArray(1,3,cv.CV_8U,[thr.h1[1],255,255]);
       const low2  = cv.matFromArray(1,3,cv.CV_8U,[thr.h2[0],thr.sMin,thr.vMin]);
       const high2 = cv.matFromArray(1,3,cv.CV_8U,[thr.h2[1],255,255]);
-      cv.inRange(hsv, low1, high1, mask1);
-      cv.inRange(hsv, low2, high2, mask2);
+      cv.inRange(hsvROI, low1, high1, mask1);
+      cv.inRange(hsvROI, low2, high2, mask2);
       cv.bitwise_or(mask1, mask2, mask);
       low1.delete(); high1.delete(); low2.delete(); high2.delete();
 
@@ -328,10 +380,16 @@ export function createRedRingDetector({
       const stable = stableFrom(cands);
 
       for (const s of stable) {
+        s.rect.y += roiY;
         const p1 = new cv.Point(s.rect.x, s.rect.y);
         const p2 = new cv.Point(s.rect.x + s.rect.width, s.rect.y + s.rect.height);
         cv.rectangle(dst, p1, p2, [0,255,0,255], 3);
       }
+
+      srcROI.delete();
+      dstROI.delete();
+      rgbROI.delete();
+      hsvROI.delete();
       cv.imshow(outputCanvas, dst);
 
       if (typeof api.onStable === 'function') api.onStable(stable);

@@ -5,11 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>Pin Traffic Signs</title>
   <style>
-    :root { --bg:#0b0b0b; --panel:#111; --line:#2a2a2a; --green:#00ff66; }
+    :root {
+      --bg:#0b0b0b;
+      --panel:#111;
+      --line:#2a2a2a;
+      --green:#00ff66;
+    }
     html,body{height:100%; margin:0; background:var(--bg); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden;}
-    #stage{position:relative; width:100vw; height:100vh;}
-    canvas{position:absolute; inset:0; width:100%; height:100%; background:#000;}
-    video{display:none;}
+    #stage{
+      position:relative;
+      width:100vw;
+      height:100vh;
+      overflow:hidden;
+    }
+    canvas{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      background:transparent;
+    }
+    video{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      background:#000;
+    }
     #pins{position:absolute; top:10px; left:10px; display:flex; flex-direction:column; gap:10px; z-index:5; max-width:min(42vw,420px);}
     .pinCard{
       display:flex; align-items:center; gap:10px;
@@ -152,6 +175,9 @@
         video.srcObject = stream;
         await video.play();
         await waitVideoReady(); // ✅ ensure we have real videoWidth/Height
+        // When stream is ready, show live preview video by default
+        video.style.display = 'block';
+        outCanvas.style.display = 'none';
       }
 
       function uiConfig() {
@@ -191,11 +217,29 @@
         return { x: x1, y: y1, width: Math.max(2, x2 - x1), height: Math.max(2, y2 - y1) };
       }
 
+      // Snapshot configuration:
+      //   SNAPSHOT_SCALE: downscale factor applied when capturing frames for pins.
+      //   1.0 = original camera resolution (highest quality, heaviest)
+      //   0.4 = 40% of width/height (much lighter, still good for small thumbnails)
+      const SNAPSHOT_SCALE = 0.45;
+
       function snapshotCanvas() {
-        const w = video.videoWidth, h = video.videoHeight;
+        const srcW = video.videoWidth;
+        const srcH = video.videoHeight;
+        if (!srcW || !srcH) return null;
+
+        const scale = SNAPSHOT_SCALE > 0 && SNAPSHOT_SCALE < 1 ? SNAPSHOT_SCALE : 1;
+        const w = Math.round(srcW * scale);
+        const h = Math.round(srcH * scale);
+
         const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(video, 0, 0, w, h);
+        c.width = w;
+        c.height = h;
+
+        const ctx = c.getContext('2d');
+        // Draw full frame, downscaled to thumbnail resolution.
+        ctx.drawImage(video, 0, 0, srcW, srcH, 0, 0, w, h);
+
         return { w, h, c };
       }
 
@@ -289,8 +333,11 @@
             // store snapshots (light)
             if (!track.frames.length || (t - track.frames[track.frames.length-1].ts) > 55) {
               const snap = snapshotCanvas();
-              track.frames.push({ ts: t, canvas: snap.c, w: snap.w, h: snap.h, rect: track.clusterRect });
-              if (track.frames.length > 16) track.frames.shift();
+              if (snap) {
+                track.frames.push({ ts: t, canvas: snap.c, w: snap.w, h: snap.h, rect: track.clusterRect });
+                // Keep only a small sliding window of thumbnails to avoid memory growth.
+                if (track.frames.length > 8) track.frames.shift();
+              }
             }
 
           } else if (track) {
@@ -332,9 +379,15 @@
           track = null;
           startDetector();
           statusEl.textContent = "Running...";
+          // when running (menu hidden) draw via canvas and hide raw video element
+          video.style.display = 'none';
+          outCanvas.style.display = 'block';
         } else {
           stopDetector();
           statusEl.textContent = "Paused (menu open)";
+          // when menu is open, show full live video preview
+          video.style.display = 'block';
+          outCanvas.style.display = 'none';
         }
       }
 
