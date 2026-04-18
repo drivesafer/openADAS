@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "apps": [
+    {
+      "id": "traffic-sign",
+      "name": { "en": "Traffic Sign Recognition", "vi": "Nhận diện biển báo" },
+      "description": { "en": "Detect and recognize traffic signs in real time.", "vi": "Phát hiện và nhận diện biển báo giao thông theo thời gian thực." },
+      "version": "1.0.0",
+      "icon": "🛑",
+      "accentColor": "#2563eb",
+      "author": "OpenADAS",
+      "permissions": ["camera", "opencv"],
+      "tags": ["detection", "signs", "safety"]
+    },
+    {
+      "id": "traffic-sign-tune",
+      "name": { "en": "Traffic Sign (Tune/Debug)", "vi": "Biển báo (Chỉnh/Debug)" },
+      "description": { "en": "Debug and tune traffic sign detection parameters.", "vi": "Chỉnh sửa và tinh chỉnh tham số nhận diện biển báo." },
+      "version": "1.0.0",
+      "icon": "🔧",
+      "accentColor": "#f59e0b",
+      "author": "OpenADAS",
+      "permissions": ["camera", "opencv"],
+      "tags": ["detection", "debug"]
+    },
+    {
+      "id": "lane-departure",
+      "name": { "en": "Lane Departure Warning", "vi": "Cảnh báo lệch làn" },
+      "description": { "en": "Warn when the vehicle drifts out of its lane.", "vi": "Cảnh báo khi xe có xu hướng rời khỏi làn đường." },
+      "version": "0.1.0",
+      "icon": "🛣️",
+      "accentColor": "#16a34a",
+      "author": "OpenADAS",
+      "permissions": ["camera", "opencv"],
+      "tags": ["lane", "safety"]
+    },
+    {
+      "id": "combo",
+      "name": { "en": "Signs + Lane Departure", "vi": "Biển báo + Lệch làn" },
+      "description": { "en": "Combined traffic sign recognition and lane departure warning.", "vi": "Kết hợp cả nhận diện biển báo và cảnh báo lệch làn." },
+      "version": "0.1.0",
+      "icon": "🛑➕🛣️",
+      "accentColor": "#f59e0b",
+      "author": "OpenADAS",
+      "permissions": ["camera", "opencv"],
+      "tags": ["detection", "lane", "combo"]
+    }
+  ]
+}
