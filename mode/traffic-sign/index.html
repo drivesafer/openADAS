@@ -76,6 +76,9 @@
   <div id="stage">
     <canvas id="out"></canvas>
     <video id="vid" playsinline muted></video>
+    <!-- DEBUG:video-file -->
+    <input type="file" id="fileInput" accept="video/*" style="display:none"/>
+    <!-- /DEBUG:video-file -->
 
     <div id="pins"></div>
 
@@ -116,10 +119,17 @@
       const camSel = document.getElementById('camSel');
       const modeSel = document.getElementById('modeSel');
       const statusEl = document.getElementById('status');
+      // --- DEBUG:video-file ---
+      const fileInput = document.getElementById('fileInput');
+      // --- /DEBUG:video-file ---
 
       let stream = null;
       let detector = null;
       let running = false;
+      // --- DEBUG:video-file ---
+      let fileBlobURL = null;
+      let prevCamValue = '';
+      // --- /DEBUG:video-file ---
 
       // --- Track / Pin state ---
       let track = null;
@@ -157,11 +167,22 @@
           opt.textContent = c.label || `Camera ${idx+1}`;
           camSel.appendChild(opt);
         });
+        // --- DEBUG:video-file ---
+        const fileOpt = document.createElement('option');
+        fileOpt.value = '__file__';
+        fileOpt.textContent = 'Local video file\u2026';
+        camSel.appendChild(fileOpt);
+        // --- /DEBUG:video-file ---
         return cams;
       }
 
       async function startStream(deviceId) {
         if (stream) stream.getTracks().forEach(t => t.stop());
+        // --- DEBUG:video-file ---
+        if (fileBlobURL) { URL.revokeObjectURL(fileBlobURL); fileBlobURL = null; }
+        video.src = '';
+        video.loop = false;
+        // --- /DEBUG:video-file ---
 
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -179,6 +200,20 @@
         video.style.display = 'block';
         outCanvas.style.display = 'none';
       }
+
+      // --- DEBUG:video-file ---
+      async function startVideoFile(file) {
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        if (fileBlobURL) URL.revokeObjectURL(fileBlobURL);
+
+        fileBlobURL = URL.createObjectURL(file);
+        video.srcObject = null;
+        video.src = fileBlobURL;
+        video.loop = true;
+        await video.play();
+        await waitVideoReady();
+      }
+      // --- /DEBUG:video-file ---
 
       function uiConfig() {
         const mode = modeSel.value; // day|night
@@ -398,6 +433,13 @@
       };
 
       camSel.onchange = async () => {
+        // --- DEBUG:video-file ---
+        if (camSel.value === '__file__') {
+          fileInput.click();
+          return;
+        }
+        prevCamValue = camSel.value;
+        // --- /DEBUG:video-file ---
         const wasRunning = running;
         setRunning(false);
         statusEl.textContent = "Switching camera...";
@@ -405,6 +447,23 @@
         if (wasRunning) setRunning(true);
         statusEl.textContent = wasRunning ? "Running..." : "Paused (menu open)";
       };
+
+      // --- DEBUG:video-file ---
+      fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) {
+          camSel.value = prevCamValue;
+          return;
+        }
+        const wasRunning = running;
+        setRunning(false);
+        statusEl.textContent = "Loading video file...";
+        await startVideoFile(file);
+        fileInput.value = '';
+        if (wasRunning) setRunning(true);
+        statusEl.textContent = wasRunning ? "Running..." : "Ready. Hide menu to start.";
+      };
+      // --- /DEBUG:video-file ---
 
       (async () => {
         statusEl.textContent = "Loading OpenCV...";
@@ -414,6 +473,9 @@
         await startStream(null);
 
         await listCameras();
+        // --- DEBUG:video-file ---
+        prevCamValue = camSel.value;
+        // --- /DEBUG:video-file ---
 
         statusEl.textContent = "Ready. Hide menu to start.";
         panel.classList.remove('hidden');
